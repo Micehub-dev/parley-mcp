@@ -291,6 +291,9 @@ test("advanceStep executes both participants, persists resume IDs, and finishes 
     assert.equal(state.participants.gemini.resumeId, "gemini-session-1");
     assert.equal(state.latestTurn?.responses.claude.stance, "agree");
     assert.equal(state.latestTurn?.speakerOrder[0], "gemini");
+    assert.equal(step.rollingSummary?.updatedAt, state.rollingSummary?.updatedAt);
+    assert.equal(step.latestSummary, state.rollingSummary?.synopsis);
+    assert.match(state.rollingSummary?.synopsis ?? "", /Agreements:/);
     assert.match(transcript, /Step 1 requested\. Nudge: Close the loop/);
     assert.match(transcript, /Claude responds with agreement\./);
     assert.match(transcript, /Gemini opens with a refinement\./);
@@ -558,6 +561,241 @@ test("advanceStep surfaces replay boundary when transcript append fails after st
     assert.equal(diagnostic.stateCommitStatus, "session_state_committed");
   } finally {
     await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("advanceStep maintains a rolling summary across multiple committed turns", async () => {
+  const fixture = await createFixture(
+    createMockAdapters({
+      claude: async (input) =>
+        successResult(
+          "claude",
+          input.turn === 1
+            ? buildResponse("agree", "Claude agrees on the first pass.")
+            : buildResponse("disagree", "Claude challenges the rollout timing.")
+        ),
+      gemini: async (input) =>
+        successResult(
+          "gemini",
+          input.turn === 1
+            ? buildResponse("refine", "Gemini refines the first pass.")
+            : buildResponse("refine", "Gemini proposes a phased rollout.")
+        )
+    }).adapters
+  );
+
+  try {
+    const started = await fixture.service.startSession({
+      workspaceId: "default",
+      workspaceRoot: fixture.rootDir,
+      topic: "Rolling summary accumulation",
+      orchestrator: "codex",
+      orchestratorRunId: "run-080"
+    });
+    const lease = await fixture.service.claimLease({
+      parleySessionId: started.parleySessionId,
+      orchestratorRunId: "run-080",
+      ttlSeconds: 300
+    });
+
+    const firstStep = await fixture.service.advanceStep({
+      parleySessionId: started.parleySessionId,
+      expectedStateVersion: lease.stateVersion,
+      orchestratorRunId: "run-080"
+    });
+    const secondStep = await fixture.service.advanceStep({
+      parleySessionId: started.parleySessionId,
+      expectedStateVersion: firstStep.stateVersion,
+      orchestratorRunId: "run-080"
+    });
+    const state = await fixture.service.getSessionState(started.parleySessionId);
+
+    assert.deepEqual(state.rollingSummary?.agreements, [
+      "Claude agrees on the first pass.",
+      "Gemini refines the first pass."
+    ]);
+    assert.deepEqual(state.rollingSummary?.disagreements, [
+      "Claude challenges the rollout timing."
+    ]);
+    assert.equal(state.rollingSummary?.openQuestions.length, 4);
+    assert.equal(state.rollingSummary?.actionItems.length, 4);
+    assert.equal(secondStep.rollingSummary?.synopsis, state.latestSummary);
+    assert.match(state.rollingSummary?.synopsis ?? "", /Disagreements:/);
+    assert.match(state.rollingSummary?.synopsis ?? "", /Latest turn:/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("finishSession returns a stable structured conclusion derived from the rolling summary", async () => {
+  const fixture = await createFixture(
+    createMockAdapters({
+      claude: async () =>
+        successResult("claude", {
+          stance: "agree",
+          summary: "Claude supports the plan.",
+          arguments: ["Claude keeps the implementation path simple."],
+          questions: [],
+          proposed_next_step: "Write the implementation checklist."
+        }),
+      gemini: async () =>
+        successResult("gemini", {
+          stance: "refine",
+          summary: "Gemini refines the plan.",
+          arguments: ["Gemini scopes the rollout."],
+          questions: [],
+          proposed_next_step: "Write the implementation checklist."
+        })
+    }).adapters
+  );
+
+  try {
+    const started = await fixture.service.startSession({
+      workspaceId: "default",
+      workspaceRoot: fixture.rootDir,
+      topic: "Conclusion contract",
+      orchestrator: "codex",
+      orchestratorRunId: "run-090"
+    });
+    const lease = await fixture.service.claimLease({
+      parleySessionId: started.parleySessionId,
+      orchestratorRunId: "run-090",
+      ttlSeconds: 300
+    });
+
+    await fixture.service.advanceStep({
+      parleySessionId: started.parleySessionId,
+      expectedStateVersion: lease.stateVersion,
+      orchestratorRunId: "run-090"
+    });
+
+    const firstFinish = await fixture.service.finishSession(started.parleySessionId, "run-090");
+    const secondFinish = await fixture.service.finishSession(started.parleySessionId, "run-091");
+
+    assert.equal(firstFinish.summary, firstFinish.conclusion.summary);
+    assert.deepEqual(firstFinish.conclusion.consensus, [
+      "Claude supports the plan.",
+      "Gemini refines the plan."
+    ]);
+    assert.equal(firstFinish.conclusion.recommendedDisposition, "resolved");
+    assert.deepEqual(secondFinish.conclusion, firstFinish.conclusion);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("promoteSummary updates linked topic memory and stays idempotent", async () => {
+  const fixture = await createFixture(
+    createMockAdapters({
+      claude: async () =>
+        successResult("claude", {
+          stance: "agree",
+          summary: "Claude confirms the decision.",
+          arguments: ["Claude sees no remaining blocker."],
+          questions: [],
+          proposed_next_step: "Document the outcome."
+        }),
+      gemini: async () =>
+        successResult("gemini", {
+          stance: "refine",
+          summary: "Gemini adds follow-up steps.",
+          arguments: ["Gemini aligns the rollout sequence."],
+          questions: [],
+          proposed_next_step: "Document the outcome."
+        })
+    }).adapters
+  );
+
+  try {
+    const now = new Date().toISOString();
+    await fixture.store.createTopic({
+      topicId: "topic-100",
+      workspaceId: "default",
+      title: "Promotion target",
+      body: "Track session conclusions",
+      status: "open",
+      tags: [],
+      createdAt: now,
+      updatedAt: now,
+      linkedSessionIds: [],
+      keyThreadIds: [],
+      openQuestions: [],
+      actionItems: [],
+      statusHistory: [{ status: "open", changedAt: now }]
+    });
+
+    const started = await fixture.service.startSession({
+      workspaceId: "default",
+      workspaceRoot: fixture.rootDir,
+      topic: "Promotion contract",
+      topicId: "topic-100",
+      orchestrator: "codex",
+      orchestratorRunId: "run-100"
+    });
+    const lease = await fixture.service.claimLease({
+      parleySessionId: started.parleySessionId,
+      orchestratorRunId: "run-100",
+      ttlSeconds: 300
+    });
+
+    await fixture.service.advanceStep({
+      parleySessionId: started.parleySessionId,
+      expectedStateVersion: lease.stateVersion,
+      orchestratorRunId: "run-100"
+    });
+    await fixture.service.finishSession(started.parleySessionId, "run-100");
+
+    const promoted = await fixture.service.promoteSummary({
+      parleySessionId: started.parleySessionId
+    });
+    const promotedAgain = await fixture.service.promoteSummary({
+      parleySessionId: started.parleySessionId
+    });
+    const topic = await fixture.store.getTopic("default", "topic-100");
+
+    assert.deepEqual(promoted.updatedFields, [
+      "decisionSummary",
+      "canonicalSummary",
+      "actionItems",
+      "status"
+    ]);
+    assert.equal(topic?.decisionSummary, promoted.topic.decisionSummary);
+    assert.equal(topic?.canonicalSummary, promoted.topic.canonicalSummary);
+    assert.deepEqual(topic?.linkedSessionIds, [started.parleySessionId]);
+    assert.equal(topic?.status, "resolved");
+    assert.equal(topic?.statusHistory.length, 2);
+    assert.deepEqual(promotedAgain.updatedFields, []);
+    assert.deepEqual(promotedAgain.topic.linkedSessionIds, [started.parleySessionId]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("promoteSummary rejects unfinished sessions before mutating topic memory", async () => {
+  const fixture = await createFixture();
+
+  try {
+    const started = await fixture.service.startSession({
+      workspaceId: "default",
+      workspaceRoot: fixture.rootDir,
+      topic: "Promotion guardrail",
+      orchestrator: "codex",
+      orchestratorRunId: "run-110"
+    });
+
+    await assert.rejects(
+      () =>
+        fixture.service.promoteSummary({
+          parleySessionId: started.parleySessionId
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ParleyError);
+        assert.equal(error.code, "invalid_argument");
+        return true;
+      }
+    );
+  } finally {
+    await fixture.cleanup();
   }
 });
 

@@ -31,6 +31,8 @@ Most AI tooling gets trapped inside one client surface. Parley takes the opposit
 - TypeScript + Zod-based validation for predictable inputs and outputs
 - Real `claude` and `gemini` subprocess adapter boundary with shared structured output validation
 - Resume ID persistence and last-turn response snapshots for multi-step session continuation
+- Rolling summary accumulation across successful turns
+- Structured finish-time conclusions and explicit topic promotion into workspace memory
 
 ## Architecture
 
@@ -49,16 +51,19 @@ flowchart LR
 
 ## Current Status
 
-The repository is currently at the **participant-runtime MVP** stage.
+The repository is currently at the **knowledge synthesis and topic-promotion** stage.
 
 - MCP server skeleton and core session lifecycle are implemented
 - Filesystem-backed storage is implemented
 - `parley_step` executes participant adapters and validates shared structured responses
 - Session state persists participant `resumeId` values and `latestTurn` snapshots
+- Session state also persists a structured `rollingSummary` for downstream orchestration and promotion
+- `parley_finish` returns a structured `conclusion` while keeping `summary` as a compatibility field
+- `parley_promote_summary` promotes finished-session conclusions into linked topic memory
 - Structured MCP tool errors now return machine-readable JSON envelopes with `isError: true`
 - Failed participant attempts persist debug-friendly diagnostics under `.multi-llm/sessions/<sessionId>/diagnostics/`
 - Service and adapter tests cover happy-path execution and key failure modes
-- Stdio MCP integration coverage now exercises `start -> claim_lease -> step -> finish`
+- Stdio MCP integration coverage now exercises `start -> claim_lease -> step -> finish -> promote`
 - CI is configured for install, lint, test, typecheck, and build
 
 ## Repository Layout
@@ -122,8 +127,7 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 
 ## Roadmap
 
-- Add rolling summaries and conclusion generation
-- Expand workspace memory, topic boards, and search
+- Expand topic boards, workspace search, and operator tooling
 - Package thin surfaces for plugins, extensions, and future UI layers
 
 ## Use Cases
