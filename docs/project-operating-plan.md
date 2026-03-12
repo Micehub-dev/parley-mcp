@@ -298,15 +298,20 @@ MVP 완성도를 좌우한다.
 - participant output validation green
 - adapter failure fallback 정책 문서화
 
-### Sprint 3: Moderation and Summary
+### Sprint 3: Reliability and Recovery
 
 기간: `2026-04-20` ~ `2026-05-01`
 
 목표:
 
-- moderator prompt
-- rolling summary
-- session 종료 시 conclusion / disagreement / open question 자동 정리
+- stale-lease reclaim semantics
+- subprocess diagnostics and structured tool errors
+- stdio MCP end-to-end verification
+
+Sprint 3 update:
+
+- The detailed reliability scope now lives in `docs/sprints/2026-sprint-3.md`.
+- Moderation and summary quality work moves to the following sprint after the recovery bar is locked.
 
 완료 조건:
 
@@ -646,4 +651,3 @@ MCP 코어는 유지하되, 배포 surface는 여러 개가 될 수 있다.
 2. output schema validator 추가
 3. session/state error taxonomy 정리
 4. contract spec과 코드 스키마 동기화
-

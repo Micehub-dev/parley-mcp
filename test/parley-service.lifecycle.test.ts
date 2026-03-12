@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -408,8 +408,215 @@ test("advanceStep propagates participant process failures without partial commit
     const state = await fixture.service.getSessionState(result.parleySessionId);
     assert.equal(state.turn, 0);
     assert.equal(state.stateVersion, lease.stateVersion);
+
+    const diagnosticsDir = path.join(
+      fixture.rootDir,
+      ".multi-llm",
+      "sessions",
+      result.parleySessionId,
+      "diagnostics"
+    );
+    const diagnosticFiles = await readDirSafe(diagnosticsDir);
+    assert.equal(diagnosticFiles.length, 1);
+
+    const diagnostic = JSON.parse(
+      await readFile(path.join(diagnosticsDir, diagnosticFiles[0]!), "utf8")
+    ) as {
+      outcome: string;
+      stateCommitStatus: string;
+      participants: Array<{
+        participant: string;
+        raw: {
+          exitCode: number | null;
+        };
+        failureKind?: string;
+      }>;
+    };
+
+    assert.equal(diagnostic.outcome, "participant_failure");
+    assert.equal(diagnostic.stateCommitStatus, "not_committed");
+    assert.equal(diagnostic.participants[0]?.participant, "claude");
+    assert.equal(diagnostic.participants[0]?.raw.exitCode, 17);
+    assert.equal(diagnostic.participants[0]?.failureKind, "process_error");
+    assert.equal(diagnosticFiles.length, 1);
   } finally {
     await fixture.cleanup();
+  }
+});
+
+test("advanceStep requires stale leases to be reclaimed before execution continues", async () => {
+  const fixture = await createFixture();
+
+  try {
+    const started = await fixture.service.startSession({
+      workspaceId: "default",
+      workspaceRoot: fixture.rootDir,
+      topic: "Stale lease recovery",
+      orchestrator: "codex",
+      orchestratorRunId: "run-050"
+    });
+
+    const claimed = await fixture.service.claimLease({
+      parleySessionId: started.parleySessionId,
+      orchestratorRunId: "run-050",
+      ttlSeconds: 300
+    });
+    const state = await fixture.service.getSessionState(started.parleySessionId);
+    state.leaseExpiresAt = new Date(Date.now() - 1_000).toISOString();
+    await fixture.store.saveSession(state);
+
+    await assert.rejects(
+      () =>
+        fixture.service.advanceStep({
+          parleySessionId: started.parleySessionId,
+          expectedStateVersion: claimed.stateVersion,
+          orchestratorRunId: "run-050"
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ParleyError);
+        assert.equal(error.code, "lease_conflict");
+        assert.equal(error.details?.staleLease, true);
+        return true;
+      }
+    );
+
+    const reclaimed = await fixture.service.claimLease({
+      parleySessionId: started.parleySessionId,
+      orchestratorRunId: "run-051",
+      ttlSeconds: 300
+    });
+    const step = await fixture.service.advanceStep({
+      parleySessionId: started.parleySessionId,
+      expectedStateVersion: reclaimed.stateVersion,
+      orchestratorRunId: "run-051"
+    });
+
+    assert.equal(step.turn, 1);
+    assert.equal(step.finished, false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("advanceStep surfaces replay boundary when transcript append fails after state commit", async () => {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "parley-sprint3-storage-"));
+  const store = new FaultyTranscriptStore(rootDir);
+  await store.ensureBaseLayout();
+  const service = new ParleyService(store, config, createMockAdapters().adapters);
+
+  try {
+    const started = await service.startSession({
+      workspaceId: "default",
+      workspaceRoot: rootDir,
+      topic: "Transcript append recovery",
+      orchestrator: "codex",
+      orchestratorRunId: "run-060"
+    });
+    const claimed = await service.claimLease({
+      parleySessionId: started.parleySessionId,
+      orchestratorRunId: "run-060",
+      ttlSeconds: 300
+    });
+
+    await assert.rejects(
+      () =>
+        service.advanceStep({
+          parleySessionId: started.parleySessionId,
+          expectedStateVersion: claimed.stateVersion,
+          orchestratorRunId: "run-060"
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ParleyError);
+        assert.equal(error.code, "storage_failure");
+        assert.equal(error.details?.stateCommitted, true);
+        return true;
+      }
+    );
+
+    const state = await service.getSessionState(started.parleySessionId);
+    assert.equal(state.turn, 1);
+    assert.ok(state.latestTurn);
+
+    const diagnosticsDir = path.join(
+      rootDir,
+      ".multi-llm",
+      "sessions",
+      started.parleySessionId,
+      "diagnostics"
+    );
+    const diagnosticFiles = await readDirSafe(diagnosticsDir);
+    assert.equal(diagnosticFiles.length, 1);
+
+    const diagnostic = JSON.parse(
+      await readFile(path.join(diagnosticsDir, diagnosticFiles[0]!), "utf8")
+    ) as {
+      outcome: string;
+      stateCommitStatus: string;
+    };
+
+    assert.equal(diagnostic.outcome, "storage_failure");
+    assert.equal(diagnostic.stateCommitStatus, "session_state_committed");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("advanceStep exposes when diagnostic persistence fails during participant failure handling", async () => {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "parley-sprint3-diagnostic-"));
+  const store = new FaultyDiagnosticStore(rootDir);
+  await store.ensureBaseLayout();
+  const service = new ParleyService(
+    store,
+    config,
+    createMockAdapters({
+      claude: async () =>
+        failureResult("claude", "process_error", "Claude CLI exited with code 23.", {
+          exitCode: 23
+        }),
+      gemini: async () => successResult("gemini", buildResponse("refine", "Gemini would succeed."))
+    }).adapters
+  );
+
+  try {
+    const started = await service.startSession({
+      workspaceId: "default",
+      workspaceRoot: rootDir,
+      topic: "Diagnostic failure visibility",
+      orchestrator: "codex",
+      orchestratorRunId: "run-070"
+    });
+    const claimed = await service.claimLease({
+      parleySessionId: started.parleySessionId,
+      orchestratorRunId: "run-070",
+      ttlSeconds: 300
+    });
+
+    await assert.rejects(
+      () =>
+        service.advanceStep({
+          parleySessionId: started.parleySessionId,
+          expectedStateVersion: claimed.stateVersion,
+          orchestratorRunId: "run-070"
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ParleyError);
+        assert.equal(error.code, "participant_failure");
+        assert.equal(error.details?.diagnosticsPersisted, false);
+        return true;
+      }
+    );
+
+    const diagnosticsDir = path.join(
+      rootDir,
+      ".multi-llm",
+      "sessions",
+      started.parleySessionId,
+      "diagnostics"
+    );
+    const diagnosticFiles = await readDirSafe(diagnosticsDir);
+    assert.equal(diagnosticFiles.length, 0);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
   }
 });
 
@@ -516,4 +723,28 @@ function emptyRaw(participant: ParticipantKind) {
     stderr: "",
     exitCode: 0
   };
+}
+
+class FaultyTranscriptStore extends FileSystemStore {
+  override async appendTranscript(_sessionId: string, _entries: unknown[]): Promise<void> {
+    throw new Error("Simulated transcript append failure.");
+  }
+}
+
+class FaultyDiagnosticStore extends FileSystemStore {
+  override async writeSessionDiagnostic(
+    _sessionId: string,
+    _diagnosticId: string,
+    _payload: unknown
+  ): Promise<string> {
+    throw new Error("Simulated diagnostic write failure.");
+  }
+}
+
+async function readDirSafe(dirPath: string): Promise<string[]> {
+  try {
+    return await readdir(dirPath);
+  } catch {
+    return [];
+  }
 }

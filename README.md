@@ -55,7 +55,10 @@ The repository is currently at the **participant-runtime MVP** stage.
 - Filesystem-backed storage is implemented
 - `parley_step` executes participant adapters and validates shared structured responses
 - Session state persists participant `resumeId` values and `latestTurn` snapshots
+- Structured MCP tool errors now return machine-readable JSON envelopes with `isError: true`
+- Failed participant attempts persist debug-friendly diagnostics under `.multi-llm/sessions/<sessionId>/diagnostics/`
 - Service and adapter tests cover happy-path execution and key failure modes
+- Stdio MCP integration coverage now exercises `start -> claim_lease -> step -> finish`
 - CI is configured for install, lint, test, typecheck, and build
 
 ## Repository Layout
@@ -119,7 +122,6 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 
 ## Roadmap
 
-- Add operator-friendly subprocess diagnostics and timeout/retry controls
 - Add rolling summaries and conclusion generation
 - Expand workspace memory, topic boards, and search
 - Package thin surfaces for plugins, extensions, and future UI layers

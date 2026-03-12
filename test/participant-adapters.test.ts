@@ -87,6 +87,35 @@ test("adapter returns participant_failure-ready invalid_output results for malfo
   }
 });
 
+test("adapter normalizes launcher override parse errors into process_error results", async () => {
+  const originalArgs = process.env.PARLEY_CLAUDE_ARGS_JSON;
+  process.env.PARLEY_CLAUDE_ARGS_JSON = "{not-json";
+
+  try {
+    const executor = new FakeCommandExecutor({
+      stdout: ""
+    });
+    const adapters = createParticipantAdapters(executor);
+
+    const result = await adapters.claude.run(buildAdapterInput());
+
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.reason, "process_error");
+      assert.match(result.message, /json string array/i);
+      assert.equal(result.raw.command, "claude");
+      assert.deepEqual(result.raw.args, []);
+    }
+    assert.equal(executor.calls.length, 0);
+  } finally {
+    if (originalArgs === undefined) {
+      delete process.env.PARLEY_CLAUDE_ARGS_JSON;
+    } else {
+      process.env.PARLEY_CLAUDE_ARGS_JSON = originalArgs;
+    }
+  }
+});
+
 class FakeCommandExecutor implements CommandExecutor {
   readonly calls: CommandExecutionInput[] = [];
 

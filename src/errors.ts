@@ -7,11 +7,13 @@ export type ParleyErrorCode =
   | "storage_failure"
   | "version_mismatch";
 
+export type ParleyErrorDetailValue = string | number | boolean | null;
+
 export class ParleyError extends Error {
   constructor(
     public readonly code: ParleyErrorCode,
     message: string,
-    public readonly details?: Record<string, string | number | boolean>
+    public readonly details?: Record<string, ParleyErrorDetailValue>
   ) {
     super(`[${code}] ${message}`);
     this.name = "ParleyError";
