@@ -1,4 +1,4 @@
-import type { ParleyConfig, ParleySessionState, TopicRecord, TranscriptEntry } from "../types.js";
+import type { ParleyConfig, ParleySessionState, TranscriptEntry } from "../types.js";
 import { ParleyError } from "../errors.js";
 import { FileSystemStore } from "../storage/fs-store.js";
 import { createId } from "../utils/id.js";
