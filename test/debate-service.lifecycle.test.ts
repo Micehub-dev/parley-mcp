@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
+import { DebateError } from "../src/errors.js";
 import { DebateService } from "../src/services/debate-service.js";
 import type { DebateConfig } from "../src/types.js";
 import { FileSystemStore } from "../src/storage/fs-store.js";
@@ -113,6 +114,112 @@ test("session transcript is created with the initial system message", async () =
     const transcript = await readFile(transcriptPath, "utf8");
 
     assert.match(transcript, /Debate session created for topic: Transcript bootstrap/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("startSession rejects missing topics and invalid models with explicit error codes", async () => {
+  const fixture = await createFixture();
+
+  try {
+    await assert.rejects(
+      () =>
+        fixture.service.startSession({
+          workspaceId: "default",
+          workspaceRoot: fixture.rootDir,
+          topic: "Broken topic link",
+          topicId: "topic-missing",
+          orchestrator: "codex"
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof DebateError);
+        assert.equal(error.code, "not_found");
+        return true;
+      }
+    );
+
+    await assert.rejects(
+      () =>
+        fixture.service.startSession({
+          workspaceId: "default",
+          workspaceRoot: fixture.rootDir,
+          topic: "Broken model config",
+          claudeModel: "haiku",
+          orchestrator: "codex"
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof DebateError);
+        assert.equal(error.code, "invalid_argument");
+        return true;
+      }
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("claimLease and advanceStep enforce finished-session, lease, and version rules", async () => {
+  const fixture = await createFixture();
+
+  try {
+    const result = await fixture.service.startSession({
+      workspaceId: "default",
+      workspaceRoot: fixture.rootDir,
+      topic: "Concurrency rules",
+      orchestrator: "codex",
+      orchestratorRunId: "run-010"
+    });
+
+    const claimed = await fixture.service.claimLease({
+      debateSessionId: result.debateSessionId,
+      orchestratorRunId: "run-010",
+      ttlSeconds: 300
+    });
+
+    await assert.rejects(
+      () =>
+        fixture.service.claimLease({
+          debateSessionId: result.debateSessionId,
+          orchestratorRunId: "run-011",
+          ttlSeconds: 300
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof DebateError);
+        assert.equal(error.code, "lease_conflict");
+        return true;
+      }
+    );
+
+    await assert.rejects(
+      () =>
+        fixture.service.advanceStep({
+          debateSessionId: result.debateSessionId,
+          expectedStateVersion: claimed.stateVersion + 1,
+          orchestratorRunId: "run-010"
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof DebateError);
+        assert.equal(error.code, "version_mismatch");
+        return true;
+      }
+    );
+
+    await fixture.service.finishSession(result.debateSessionId, "run-010");
+
+    await assert.rejects(
+      () =>
+        fixture.service.claimLease({
+          debateSessionId: result.debateSessionId,
+          orchestratorRunId: "run-010",
+          ttlSeconds: 300
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof DebateError);
+        assert.equal(error.code, "session_finished");
+        return true;
+      }
+    );
   } finally {
     await fixture.cleanup();
   }
