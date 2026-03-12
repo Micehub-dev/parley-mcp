@@ -1,4 +1,3 @@
-import path from "node:path";
 import process from "node:process";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -7,7 +6,8 @@ import { z } from "zod";
 
 import { loadConfig } from "./config.js";
 import { FileSystemStore } from "./storage/fs-store.js";
-import type { DebateSessionState, TopicRecord, TranscriptEntry } from "./types.js";
+import { DebateService } from "./services/debate-service.js";
+import type { TopicRecord } from "./types.js";
 import { createId } from "./utils/id.js";
 
 export async function startServer(): Promise<void> {
@@ -16,6 +16,7 @@ export async function startServer(): Promise<void> {
   await store.ensureBaseLayout();
 
   const config = await loadConfig(rootDir);
+  const debateService = new DebateService(store, config);
 
   const server = new McpServer({
     name: "parley",
@@ -133,9 +134,8 @@ export async function startServer(): Promise<void> {
     },
     async ({ workspaceId, topicId }) => {
       const topic = await store.getTopic(workspaceId, topicId);
-
       if (!topic) {
-        throw new Error(`Topic not found: ${topicId}`);
+        throw new Error(`[not_found] Topic not found: ${topicId}`);
       }
 
       return {
@@ -174,83 +174,24 @@ export async function startServer(): Promise<void> {
       orchestrator,
       orchestratorRunId
     }) => {
-      const resolvedClaudeModel = assertAllowedModel(
-        "claude",
-        claudeModel ?? config.debate.defaults.claudeModel,
-        config
-      );
-      const resolvedGeminiModel = assertAllowedModel(
-        "gemini",
-        geminiModel ?? config.debate.defaults.geminiModel,
-        config
-      );
-      const now = new Date().toISOString();
-      const sessionId = createId("debate");
-
-      const state: DebateSessionState = {
-        sessionId,
+      const result = await debateService.startSession({
         workspaceId,
-        workspaceRoot: path.join(rootDir, workspaceId),
+        workspaceRoot: rootDir,
         topic,
         ...(topicId ? { topicId } : {}),
+        ...(claudeModel ? { claudeModel } : {}),
+        ...(geminiModel ? { geminiModel } : {}),
+        ...(typeof maxTurns === "number" ? { maxTurns } : {}),
         ...(systemPrompt ? { systemPrompt } : {}),
-        turn: 0,
-        maxTurns: maxTurns ?? config.debate.defaultMaxTurns,
-        status: "active",
-        stateVersion: 1,
-        createdAt: now,
-        updatedAt: now,
-        participants: {
-          claude: { model: resolvedClaudeModel },
-          gemini: { model: resolvedGeminiModel }
-        },
-        orchestratorAuditLog: [
-          {
-            clientKind: orchestrator,
-            ...(orchestratorRunId ? { runId: orchestratorRunId } : {}),
-            startedAt: now
-          }
-        ]
-      };
-
-      const transcript: TranscriptEntry[] = [
-        {
-          timestamp: now,
-          kind: "system",
-          speaker: "parley",
-          message: `Debate session created for topic: ${topic}`
-        }
-      ];
-
-      await store.createSession(state, transcript);
-
-      if (topicId) {
-        const topicRecord = await store.getTopic(workspaceId, topicId);
-        if (topicRecord) {
-          topicRecord.linkedSessionIds = [...new Set([...topicRecord.linkedSessionIds, sessionId])];
-          topicRecord.updatedAt = now;
-          await store.updateTopic(topicRecord);
-        }
-      }
+        orchestrator,
+        ...(orchestratorRunId ? { orchestratorRunId } : {})
+      });
 
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify(
-              {
-                debateSessionId: sessionId,
-                stateVersion: state.stateVersion,
-                leaseOwner: state.leaseOwner ?? null,
-                appliedModels: {
-                  claude: resolvedClaudeModel,
-                  gemini: resolvedGeminiModel
-                },
-                maxTurns: state.maxTurns
-              },
-              null,
-              2
-            )
+            text: JSON.stringify(result, null, 2)
           }
         ]
       };
@@ -264,7 +205,7 @@ export async function startServer(): Promise<void> {
       debateSessionId: z.string().min(1)
     },
     async ({ debateSessionId }) => {
-      const state = await requireSession(store, debateSessionId);
+      const state = await debateService.getSessionState(debateSessionId);
       return {
         content: [
           {
@@ -285,38 +226,17 @@ export async function startServer(): Promise<void> {
       ttlSeconds: z.number().int().positive().max(3600).default(300)
     },
     async ({ debateSessionId, orchestratorRunId, ttlSeconds }) => {
-      const state = await requireSession(store, debateSessionId);
-      const now = new Date();
-      const currentLeaseValid =
-        state.leaseOwner && state.leaseExpiresAt
-          ? new Date(state.leaseExpiresAt).getTime() > now.getTime()
-          : false;
-
-      if (currentLeaseValid && state.leaseOwner !== orchestratorRunId) {
-        throw new Error(`Lease is currently owned by ${state.leaseOwner}.`);
-      }
-
-      state.leaseOwner = orchestratorRunId;
-      state.leaseExpiresAt = new Date(now.getTime() + ttlSeconds * 1000).toISOString();
-      state.stateVersion += 1;
-      state.lastWriter = orchestratorRunId;
-      state.updatedAt = now.toISOString();
-
-      await store.saveSession(state);
+      const result = await debateService.claimLease({
+        debateSessionId,
+        orchestratorRunId,
+        ttlSeconds
+      });
 
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify(
-              {
-                leaseOwner: state.leaseOwner,
-                leaseExpiresAt: state.leaseExpiresAt,
-                stateVersion: state.stateVersion
-              },
-              null,
-              2
-            )
+            text: JSON.stringify(result, null, 2)
           }
         ]
       };
@@ -334,65 +254,19 @@ export async function startServer(): Promise<void> {
       userNudge: z.string().optional()
     },
     async ({ debateSessionId, expectedStateVersion, orchestratorRunId, speakerOrder, userNudge }) => {
-      const state = await requireSession(store, debateSessionId);
-
-      if (state.stateVersion !== expectedStateVersion) {
-        throw new Error(
-          `State version mismatch. Expected ${expectedStateVersion}, found ${state.stateVersion}.`
-        );
-      }
-
-      if (state.leaseOwner && state.leaseOwner !== orchestratorRunId) {
-        throw new Error(`Session lease is owned by ${state.leaseOwner}.`);
-      }
-
-      const now = new Date().toISOString();
-      const nextTurn = state.turn + 1;
-      const order = speakerOrder ?? ["claude", "gemini"];
-
-      const transcriptEntries: TranscriptEntry[] = [
-        {
-          timestamp: now,
-          kind: "orchestrator",
-          speaker: orchestratorRunId,
-          message: userNudge
-            ? `Step ${nextTurn} requested. Nudge: ${userNudge}`
-            : `Step ${nextTurn} requested.`,
-          metadata: {
-            speakerOrder: order.join(",")
-          }
-        }
-      ];
-
-      state.turn = nextTurn;
-      state.stateVersion += 1;
-      state.lastWriter = orchestratorRunId;
-      state.updatedAt = now;
-      state.latestSummary =
-        "Participant subprocess integration is not wired yet. This step currently records orchestration metadata only.";
-
-      if (state.turn >= state.maxTurns) {
-        state.status = "finished";
-      }
-
-      await store.appendTranscript(state.sessionId, transcriptEntries);
-      await store.saveSession(state);
+      const result = await debateService.advanceStep({
+        debateSessionId,
+        expectedStateVersion,
+        orchestratorRunId,
+        ...(speakerOrder ? { speakerOrder } : {}),
+        ...(userNudge ? { userNudge } : {})
+      });
 
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify(
-              {
-                turn: state.turn,
-                stateVersion: state.stateVersion,
-                finished: state.status === "finished",
-                note:
-                  "CLI participant execution is scaffolded for the next phase. This step recorded the orchestrator event and advanced state."
-              },
-              null,
-              2
-            )
+            text: JSON.stringify(result, null, 2)
           }
         ]
       };
@@ -407,39 +281,13 @@ export async function startServer(): Promise<void> {
       orchestratorRunId: z.string().optional()
     },
     async ({ debateSessionId, orchestratorRunId }) => {
-      const state = await requireSession(store, debateSessionId);
-      const now = new Date().toISOString();
-
-      state.status = "finished";
-      state.stateVersion += 1;
-      state.updatedAt = now;
-      if (orchestratorRunId) {
-        state.lastWriter = orchestratorRunId;
-      }
-      state.orchestratorAuditLog = state.orchestratorAuditLog.map((entry, index, entries) =>
-        index === entries.length - 1 && !entry.completedAt
-          ? { ...entry, completedAt: now }
-          : entry
-      );
-
-      await store.saveSession(state);
+      const result = await debateService.finishSession(debateSessionId, orchestratorRunId);
 
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify(
-              {
-                sessionId: state.sessionId,
-                status: state.status,
-                turn: state.turn,
-                summary:
-                  state.latestSummary ??
-                  "Debate session finished. Automatic participant synthesis will be added in the next implementation phase."
-              },
-              null,
-              2
-            )
+            text: JSON.stringify(result, null, 2)
           }
         ]
       };
@@ -448,26 +296,4 @@ export async function startServer(): Promise<void> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-}
-
-async function requireSession(store: FileSystemStore, sessionId: string) {
-  const state = await store.getSession(sessionId);
-  if (!state) {
-    throw new Error(`Session not found: ${sessionId}`);
-  }
-
-  return state;
-}
-
-function assertAllowedModel(
-  participant: "claude" | "gemini",
-  model: string,
-  config: Awaited<ReturnType<typeof loadConfig>>
-): string {
-  const allowed = config.debate.allowedModels[participant];
-  if (!allowed.includes(model)) {
-    throw new Error(`Model "${model}" is not allowed for ${participant}.`);
-  }
-
-  return model;
 }
