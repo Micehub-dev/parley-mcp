@@ -27,8 +27,11 @@
 - invalid_argument
 - version_mismatch
 - lease_conflict
+- session_finished
 - participant_failure
 - storage_failure
+
+Error messages should include the code in a machine-visible form such as `[lease_conflict] ...` so orchestrators can classify failures without fragile string parsing.
 
 ## Tool Specs
 
@@ -54,6 +57,45 @@
 - stateVersion
 - leaseOwner
 
+가능한 오류:
+
+- `invalid_argument`: disallowed participant model
+- `not_found`: linked `topicId` does not exist
+
+### `debate_state`
+
+입력:
+
+- debateSessionId
+
+출력:
+
+- state
+
+가능한 오류:
+
+- `not_found`: session does not exist
+
+### `debate_claim_lease`
+
+입력:
+
+- debateSessionId
+- orchestratorRunId
+- ttlSeconds
+
+출력:
+
+- leaseOwner
+- leaseExpiresAt
+- stateVersion
+
+가능한 오류:
+
+- `not_found`: session does not exist
+- `lease_conflict`: another valid lease owner already holds the session
+- `session_finished`: session is already finished
+
 ### `debate_step`
 
 입력:
@@ -71,8 +113,36 @@
 - finished
 - note
 
+가능한 오류:
+
+- `not_found`: session does not exist
+- `lease_conflict`: lease owner does not match
+- `version_mismatch`: `expectedStateVersion` differs from the persisted state
+- `session_finished`: session is already finished
+
+### `debate_finish`
+
+입력:
+
+- debateSessionId
+- orchestratorRunId?
+
+출력:
+
+- sessionId
+- status
+- turn
+- summary
+
+가능한 오류:
+
+- `not_found`: session does not exist
+
+특이사항:
+
+- `debate_finish` is idempotent for already finished sessions.
+
 ## Open Questions
 
 - participant stdout/stderr를 어느 수준까지 contract에 노출할지
 - retry semantics를 tool 내부로 둘지 orchestrator 책임으로 둘지
-
