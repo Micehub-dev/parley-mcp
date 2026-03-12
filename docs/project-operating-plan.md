@@ -256,6 +256,10 @@ Planned scope:
 - workspace and topic search
 - broader orchestrator matrix coverage
 
+Memory-layer review note:
+
+- External long-term memory layers such as mem0 and Milvus were discussed, but are intentionally deferred until file-backed retrieval and operator workflows prove insufficient for Sprint 5 needs.
+
 ### Sprint 6: Packaging and External Surfaces
 
 Window: 2026-06-01 to 2026-06-12

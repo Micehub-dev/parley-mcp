@@ -26,7 +26,7 @@ Read these files first before making changes:
 2. `multi-cli-parley-architecture.md`
 3. `docs/project-operating-plan.md`
 4. `docs/mcp-contract-spec.md`
-5. `docs/sprints/2026-sprint-4.md`
+5. `docs/sprints/2026-sprint-5.md`
 
 If code and docs disagree, prefer:
 
