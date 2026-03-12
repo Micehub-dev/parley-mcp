@@ -2,10 +2,10 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 
-import type { DebateConfig } from "./types.js";
+import type { ParleyConfig } from "./types.js";
 
 const configSchema = z.object({
-  debate: z.object({
+  parley: z.object({
     defaults: z.object({
       claudeModel: z.string().min(1),
       geminiModel: z.string().min(1)
@@ -18,7 +18,7 @@ const configSchema = z.object({
   })
 });
 
-export async function loadConfig(rootDir: string): Promise<DebateConfig> {
+export async function loadConfig(rootDir: string): Promise<ParleyConfig> {
   const configPath = path.join(rootDir, ".multi-llm", "config.json");
   const raw = await readFile(configPath, "utf8");
   return configSchema.parse(JSON.parse(raw));

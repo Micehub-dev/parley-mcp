@@ -28,7 +28,6 @@
 
 ## Success Metrics
 
-- end-to-end debate success rate
+- end-to-end parley session success rate
 - session resume success rate
 - lease conflict recovery success rate
-

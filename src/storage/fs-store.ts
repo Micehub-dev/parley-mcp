@@ -2,7 +2,7 @@ import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type {
-  DebateSessionState,
+  ParleySessionState,
   TopicRecord,
   TranscriptEntry,
   WorkspaceRecord
@@ -73,7 +73,7 @@ export class FileSystemStore {
     );
   }
 
-  async createSession(state: DebateSessionState, initialTranscript: TranscriptEntry[]): Promise<void> {
+  async createSession(state: ParleySessionState, initialTranscript: TranscriptEntry[]): Promise<void> {
     const sessionDir = path.join(this.dataRoot, "sessions", state.sessionId);
     await mkdir(sessionDir, { recursive: true });
     await writeJson(path.join(sessionDir, "state.json"), state);
@@ -86,13 +86,13 @@ export class FileSystemStore {
     });
   }
 
-  async getSession(sessionId: string): Promise<DebateSessionState | null> {
-    return readJson<DebateSessionState>(
+  async getSession(sessionId: string): Promise<ParleySessionState | null> {
+    return readJson<ParleySessionState>(
       path.join(this.dataRoot, "sessions", sessionId, "state.json")
     );
   }
 
-  async saveSession(state: DebateSessionState): Promise<void> {
+  async saveSession(state: ParleySessionState): Promise<void> {
     const sessionDir = path.join(this.dataRoot, "sessions", state.sessionId);
     await mkdir(sessionDir, { recursive: true });
     await writeJson(path.join(sessionDir, "state.json"), state);

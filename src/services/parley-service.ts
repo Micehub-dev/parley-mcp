@@ -1,5 +1,5 @@
-import type { DebateConfig, DebateSessionState, TopicRecord, TranscriptEntry } from "../types.js";
-import { DebateError } from "../errors.js";
+import type { ParleyConfig, ParleySessionState, TopicRecord, TranscriptEntry } from "../types.js";
+import { ParleyError } from "../errors.js";
 import { FileSystemStore } from "../storage/fs-store.js";
 import { createId } from "../utils/id.js";
 
@@ -17,47 +17,47 @@ export interface StartSessionInput {
 }
 
 export interface ClaimLeaseInput {
-  debateSessionId: string;
+  parleySessionId: string;
   orchestratorRunId: string;
   ttlSeconds: number;
 }
 
 export interface AdvanceStepInput {
-  debateSessionId: string;
+  parleySessionId: string;
   expectedStateVersion: number;
   orchestratorRunId: string;
   speakerOrder?: Array<"claude" | "gemini">;
   userNudge?: string;
 }
 
-export class DebateService {
+export class ParleyService {
   constructor(
     private readonly store: FileSystemStore,
-    private readonly config: DebateConfig
+    private readonly config: ParleyConfig
   ) {}
 
   async startSession(input: StartSessionInput) {
     const resolvedClaudeModel = this.assertAllowedModel(
       "claude",
-      input.claudeModel ?? this.config.debate.defaults.claudeModel
+      input.claudeModel ?? this.config.parley.defaults.claudeModel
     );
     const resolvedGeminiModel = this.assertAllowedModel(
       "gemini",
-      input.geminiModel ?? this.config.debate.defaults.geminiModel
+      input.geminiModel ?? this.config.parley.defaults.geminiModel
     );
     const now = new Date().toISOString();
-    const sessionId = createId("debate");
+    const sessionId = createId("parley");
 
     if (input.topicId) {
       const topicRecord = await this.store.getTopic(input.workspaceId, input.topicId);
       if (!topicRecord) {
-        throw new DebateError("not_found", `Topic not found: ${input.topicId}`, {
+        throw new ParleyError("not_found", `Topic not found: ${input.topicId}`, {
           topicId: input.topicId
         });
       }
     }
 
-    const state: DebateSessionState = {
+    const state: ParleySessionState = {
       sessionId,
       workspaceId: input.workspaceId,
       workspaceRoot: input.workspaceRoot,
@@ -65,7 +65,7 @@ export class DebateService {
       ...(input.topicId ? { topicId: input.topicId } : {}),
       ...(input.systemPrompt ? { systemPrompt: input.systemPrompt } : {}),
       turn: 0,
-      maxTurns: input.maxTurns ?? this.config.debate.defaultMaxTurns,
+      maxTurns: input.maxTurns ?? this.config.parley.defaultMaxTurns,
       status: "active",
       stateVersion: 1,
       createdAt: now,
@@ -88,7 +88,7 @@ export class DebateService {
         timestamp: now,
         kind: "system",
         speaker: "parley",
-        message: `Debate session created for topic: ${input.topic}`
+        message: `Parley session created for topic: ${input.topic}`
       }
     ];
 
@@ -104,7 +104,7 @@ export class DebateService {
     }
 
     return {
-      debateSessionId: sessionId,
+      parleySessionId: sessionId,
       stateVersion: state.stateVersion,
       leaseOwner: state.leaseOwner ?? null,
       appliedModels: {
@@ -115,11 +115,11 @@ export class DebateService {
     };
   }
 
-  async getSessionState(sessionId: string): Promise<DebateSessionState> {
+  async getSessionState(sessionId: string): Promise<ParleySessionState> {
     const state = await this.store.getSession(sessionId);
     if (!state) {
-      throw new DebateError("not_found", `Session not found: ${sessionId}`, {
-        debateSessionId: sessionId
+      throw new ParleyError("not_found", `Session not found: ${sessionId}`, {
+        parleySessionId: sessionId
       });
     }
 
@@ -127,7 +127,7 @@ export class DebateService {
   }
 
   async claimLease(input: ClaimLeaseInput) {
-    const state = await this.getSessionState(input.debateSessionId);
+    const state = await this.getSessionState(input.parleySessionId);
     this.assertActiveSession(state);
 
     const now = new Date();
@@ -137,7 +137,7 @@ export class DebateService {
         : false;
 
     if (currentLeaseValid && state.leaseOwner !== input.orchestratorRunId) {
-      throw new DebateError(
+      throw new ParleyError(
         "lease_conflict",
         `Lease is currently owned by ${state.leaseOwner}.`,
         state.leaseOwner ? { leaseOwner: state.leaseOwner } : undefined
@@ -160,11 +160,11 @@ export class DebateService {
   }
 
   async advanceStep(input: AdvanceStepInput) {
-    const state = await this.getSessionState(input.debateSessionId);
+    const state = await this.getSessionState(input.parleySessionId);
     this.assertActiveSession(state);
 
     if (state.stateVersion !== input.expectedStateVersion) {
-      throw new DebateError(
+      throw new ParleyError(
         "version_mismatch",
         `State version mismatch. Expected ${input.expectedStateVersion}, found ${state.stateVersion}.`,
         {
@@ -175,7 +175,7 @@ export class DebateService {
     }
 
     if (state.leaseOwner && state.leaseOwner !== input.orchestratorRunId) {
-      throw new DebateError("lease_conflict", `Session lease is owned by ${state.leaseOwner}.`, {
+      throw new ParleyError("lease_conflict", `Session lease is owned by ${state.leaseOwner}.`, {
         leaseOwner: state.leaseOwner
       });
     }
@@ -221,8 +221,8 @@ export class DebateService {
     };
   }
 
-  async finishSession(debateSessionId: string, orchestratorRunId?: string) {
-    const state = await this.getSessionState(debateSessionId);
+  async finishSession(parleySessionId: string, orchestratorRunId?: string) {
+    const state = await this.getSessionState(parleySessionId);
     const now = new Date().toISOString();
 
     if (state.status === "finished") {
@@ -244,21 +244,21 @@ export class DebateService {
     return this.buildFinishResponse(state);
   }
 
-  private buildFinishResponse(state: DebateSessionState) {
+  private buildFinishResponse(state: ParleySessionState) {
     return {
-      sessionId: state.sessionId,
+      parleySessionId: state.sessionId,
       status: state.status,
       turn: state.turn,
       summary:
         state.latestSummary ??
-        "Debate session finished. Automatic participant synthesis will be added in the next implementation phase."
+        "Parley session finished. Automatic participant synthesis will be added in the next implementation phase."
     };
   }
 
   private assertAllowedModel(participant: "claude" | "gemini", model: string): string {
-    const allowed = this.config.debate.allowedModels[participant];
+    const allowed = this.config.parley.allowedModels[participant];
     if (!allowed.includes(model)) {
-      throw new DebateError("invalid_argument", `Model "${model}" is not allowed for ${participant}.`, {
+      throw new ParleyError("invalid_argument", `Model "${model}" is not allowed for ${participant}.`, {
         participant,
         model
       });
@@ -267,10 +267,10 @@ export class DebateService {
     return model;
   }
 
-  private assertActiveSession(state: DebateSessionState) {
+  private assertActiveSession(state: ParleySessionState) {
     if (state.status === "finished") {
-      throw new DebateError("session_finished", `Session ${state.sessionId} has already finished.`, {
-        debateSessionId: state.sessionId
+      throw new ParleyError("session_finished", `Session ${state.sessionId} has already finished.`, {
+        parleySessionId: state.sessionId
       });
     }
   }

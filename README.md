@@ -1,6 +1,6 @@
 # Parley
 
-> Orchestrator-agnostic MCP server for multi-LLM debate sessions across Codex, Claude, and Gemini.
+> Orchestrator-agnostic MCP server for multi-LLM parley sessions across Codex, Claude, and Gemini.
 
 [![CI](https://github.com/Micehub-dev/parley-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Micehub-dev/parley-mcp/actions/workflows/ci.yml)
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
@@ -8,16 +8,16 @@
 [![MCP](https://img.shields.io/badge/MCP-Model%20Context%20Protocol-111827)](https://modelcontextprotocol.io/)
 ![Visitors](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fgithub.com%2FMicehub-dev%2Fparley-mcp&count_bg=%230F766E&title_bg=%23111827&icon=github.svg&icon_color=%23E7E7E7&title=visitors&edge_flat=false)
 
-Parley is a **Model Context Protocol (MCP) server** designed for **multi-agent and multi-LLM debate workflows**. It gives `Codex`, `Claude`, and `Gemini` a shared orchestration contract so debate sessions can be started, resumed, coordinated, and archived without locking the project into a single client or vendor-specific extension model.
+Parley is a **Model Context Protocol (MCP) server** designed for **multi-agent and multi-LLM parley workflows**. It gives `Codex`, `Claude`, and `Gemini` a shared orchestration contract so parley sessions can be started, resumed, coordinated, and archived without locking the project into a single client or vendor-specific extension model.
 
-If you are looking for a **TypeScript MCP server template** for **AI debate orchestration**, **Claude/Gemini interoperability**, or **workspace-level session memory**, this repository is built for that exact problem space.
+If you are looking for a **TypeScript MCP server template** for **AI parley orchestration**, **Claude/Gemini interoperability**, or **workspace-level session memory**, this repository is built for that exact problem space.
 
 ## Why Parley
 
 Most AI tooling gets trapped inside one client surface. Parley takes the opposite approach:
 
 - The server owns session state, not the client.
-- Debate steps are driven by MCP tools, not UI-specific commands.
+- Parley steps are driven by MCP tools, not UI-specific commands.
 - Claude, Gemini, and future participants can be normalized behind one contract.
 - Workspace memory survives any single orchestrator session.
 - The architecture is ready for later expansion into plugins, extensions, web UIs, or hosted coordination services.
@@ -25,9 +25,9 @@ Most AI tooling gets trapped inside one client surface. Parley takes the opposit
 ## Highlights
 
 - Orchestrator-agnostic MCP server
-- Filesystem-backed workspace, topic, and debate session storage
+- Filesystem-backed workspace, topic, and parley session storage
 - Lease and `stateVersion` primitives for safe concurrent orchestration
-- Structured tool surface for topic creation, session start, state lookup, and debate progression
+- Structured tool surface for topic creation, session start, state lookup, and session progression
 - TypeScript + Zod-based validation for predictable inputs and outputs
 - Clear path toward real `claude` and `gemini` subprocess adapters
 
@@ -53,7 +53,7 @@ The repository is currently at the **MVP scaffold** stage.
 - MCP server skeleton is implemented
 - Filesystem-backed storage is implemented
 - Project operating docs and agent onboarding docs are included
-- `debate_step` is scaffolded and ready for real participant execution work
+- `parley_step` is scaffolded and ready for real participant execution work
 - CI is configured for install, typecheck, and build
 
 ## Repository Layout
@@ -72,7 +72,7 @@ The repository is currently at the **MVP scaffold** stage.
 |-- AGENTS.md
 |-- LICENSE
 |-- README.md
-`-- multi-cli-debate-architecture.md
+`-- multi-cli-parley-architecture.md
 ```
 
 ## Quick Start
@@ -101,20 +101,20 @@ npm run build
 npm run dev
 ```
 
-Parley stores local project data under `.multi-llm/`, including workspace metadata, debate sessions, transcripts, and topic records.
+Parley stores local project data under `.multi-llm/`, including workspace metadata, parley sessions, transcripts, and topic records.
 
 ## Documentation
 
 - `AGENTS.md`: onboarding guide for coding agents and contributors
 - `docs/project-operating-plan.md`: PM-oriented roadmap, sprint structure, and prioritization
 - `docs/mcp-contract-spec.md`: MCP contract source of truth
-- `multi-cli-debate-architecture.md`: architecture rationale and long-form design
+- `multi-cli-parley-architecture.md`: architecture rationale and long-form design
 
 ## Roadmap
 
 - Complete the core session lifecycle and error taxonomy
 - Add real `claude` / `gemini` subprocess adapters
-- Add rolling summaries and debate conclusion generation
+- Add rolling summaries and conclusion generation
 - Expand workspace memory, topic boards, and search
 - Package thin surfaces for plugins, extensions, and future UI layers
 

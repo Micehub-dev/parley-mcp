@@ -1,7 +1,7 @@
 export type ParticipantKind = "claude" | "gemini";
 
-export interface DebateConfig {
-  debate: {
+export interface ParleyConfig {
+  parley: {
     defaults: {
       claudeModel: string;
       geminiModel: string;
@@ -27,7 +27,7 @@ export interface ParticipantState {
   resumeId?: string;
 }
 
-export interface DebateSessionState {
+export interface ParleySessionState {
   sessionId: string;
   workspaceId: string;
   workspaceRoot: string;

@@ -1,7 +1,7 @@
 {
   "name": "parley",
   "version": "0.1.0",
-  "description": "Orchestrator-agnostic MCP server for multi-LLM debate sessions.",
+  "description": "Orchestrator-agnostic MCP server for multi-LLM parley sessions.",
   "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
@@ -20,7 +20,7 @@
     "claude",
     "gemini",
     "codex",
-    "debate",
+    "parley",
     "orchestrator"
   ],
   "repository": {
