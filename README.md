@@ -54,7 +54,8 @@ The repository is currently at the **MVP scaffold** stage.
 - Filesystem-backed storage is implemented
 - Project operating docs and agent onboarding docs are included
 - `parley_step` is scaffolded and ready for real participant execution work
-- CI is configured for install, typecheck, and build
+- ESLint flat-config baseline is configured for lightweight CI linting
+- CI is configured for install, lint, typecheck, and build
 
 ## Repository Layout
 
@@ -91,6 +92,7 @@ npm install
 ### Validate
 
 ```bash
+npm run lint
 npm run typecheck
 npm run build
 ```
