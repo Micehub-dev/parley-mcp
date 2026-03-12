@@ -4,13 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { DebateError } from "../src/errors.js";
-import { DebateService } from "../src/services/debate-service.js";
-import type { DebateConfig } from "../src/types.js";
+import { ParleyError } from "../src/errors.js";
+import { ParleyService } from "../src/services/parley-service.js";
+import type { ParleyConfig } from "../src/types.js";
 import { FileSystemStore } from "../src/storage/fs-store.js";
 
-const config: DebateConfig = {
-  debate: {
+const config: ParleyConfig = {
+  parley: {
     defaults: {
       claudeModel: "sonnet",
       geminiModel: "auto"
@@ -53,7 +53,7 @@ test("startSession persists a stable session contract and links an existing topi
       orchestratorRunId: "run-001"
     });
 
-    const state = await fixture.service.getSessionState(result.debateSessionId);
+    const state = await fixture.service.getSessionState(result.parleySessionId);
     const topic = await fixture.store.getTopic("default", topicId);
 
     assert.equal(state.workspaceRoot, fixture.rootDir);
@@ -61,7 +61,7 @@ test("startSession persists a stable session contract and links an existing topi
     assert.equal(state.participants.claude.model, "sonnet");
     assert.equal(state.participants.gemini.model, "auto");
     assert.equal(state.topicId, topicId);
-    assert.deepEqual(topic?.linkedSessionIds, [result.debateSessionId]);
+    assert.deepEqual(topic?.linkedSessionIds, [result.parleySessionId]);
   } finally {
     await fixture.cleanup();
   }
@@ -79,9 +79,9 @@ test("finishSession stamps the final audit entry exactly once", async () => {
       orchestratorRunId: "run-002"
     });
 
-    const firstFinish = await fixture.service.finishSession(result.debateSessionId, "run-002");
-    const secondFinish = await fixture.service.finishSession(result.debateSessionId, "run-003");
-    const state = await fixture.service.getSessionState(result.debateSessionId);
+    const firstFinish = await fixture.service.finishSession(result.parleySessionId, "run-002");
+    const secondFinish = await fixture.service.finishSession(result.parleySessionId, "run-003");
+    const state = await fixture.service.getSessionState(result.parleySessionId);
 
     assert.equal(firstFinish.status, "finished");
     assert.equal(secondFinish.status, "finished");
@@ -108,12 +108,12 @@ test("session transcript is created with the initial system message", async () =
       fixture.rootDir,
       ".multi-llm",
       "sessions",
-      result.debateSessionId,
+      result.parleySessionId,
       "transcript.jsonl"
     );
     const transcript = await readFile(transcriptPath, "utf8");
 
-    assert.match(transcript, /Debate session created for topic: Transcript bootstrap/);
+    assert.match(transcript, /Parley session created for topic: Transcript bootstrap/);
   } finally {
     await fixture.cleanup();
   }
@@ -133,7 +133,7 @@ test("startSession rejects missing topics and invalid models with explicit error
           orchestrator: "codex"
         }),
       (error: unknown) => {
-        assert.ok(error instanceof DebateError);
+        assert.ok(error instanceof ParleyError);
         assert.equal(error.code, "not_found");
         return true;
       }
@@ -149,7 +149,7 @@ test("startSession rejects missing topics and invalid models with explicit error
           orchestrator: "codex"
         }),
       (error: unknown) => {
-        assert.ok(error instanceof DebateError);
+        assert.ok(error instanceof ParleyError);
         assert.equal(error.code, "invalid_argument");
         return true;
       }
@@ -172,7 +172,7 @@ test("claimLease and advanceStep enforce finished-session, lease, and version ru
     });
 
     const claimed = await fixture.service.claimLease({
-      debateSessionId: result.debateSessionId,
+      parleySessionId: result.parleySessionId,
       orchestratorRunId: "run-010",
       ttlSeconds: 300
     });
@@ -180,12 +180,12 @@ test("claimLease and advanceStep enforce finished-session, lease, and version ru
     await assert.rejects(
       () =>
         fixture.service.claimLease({
-          debateSessionId: result.debateSessionId,
+          parleySessionId: result.parleySessionId,
           orchestratorRunId: "run-011",
           ttlSeconds: 300
         }),
       (error: unknown) => {
-        assert.ok(error instanceof DebateError);
+        assert.ok(error instanceof ParleyError);
         assert.equal(error.code, "lease_conflict");
         return true;
       }
@@ -194,28 +194,28 @@ test("claimLease and advanceStep enforce finished-session, lease, and version ru
     await assert.rejects(
       () =>
         fixture.service.advanceStep({
-          debateSessionId: result.debateSessionId,
+          parleySessionId: result.parleySessionId,
           expectedStateVersion: claimed.stateVersion + 1,
           orchestratorRunId: "run-010"
         }),
       (error: unknown) => {
-        assert.ok(error instanceof DebateError);
+        assert.ok(error instanceof ParleyError);
         assert.equal(error.code, "version_mismatch");
         return true;
       }
     );
 
-    await fixture.service.finishSession(result.debateSessionId, "run-010");
+    await fixture.service.finishSession(result.parleySessionId, "run-010");
 
     await assert.rejects(
       () =>
         fixture.service.claimLease({
-          debateSessionId: result.debateSessionId,
+          parleySessionId: result.parleySessionId,
           orchestratorRunId: "run-010",
           ttlSeconds: 300
         }),
       (error: unknown) => {
-        assert.ok(error instanceof DebateError);
+        assert.ok(error instanceof ParleyError);
         assert.equal(error.code, "session_finished");
         return true;
       }
@@ -232,29 +232,29 @@ test("advanceStep appends orchestrator activity and finishes when maxTurns is re
     const result = await fixture.service.startSession({
       workspaceId: "default",
       workspaceRoot: fixture.rootDir,
-      topic: "Single turn debate",
+      topic: "Single turn parley",
       maxTurns: 1,
       orchestrator: "codex",
       orchestratorRunId: "run-020"
     });
 
     const lease = await fixture.service.claimLease({
-      debateSessionId: result.debateSessionId,
+      parleySessionId: result.parleySessionId,
       orchestratorRunId: "run-020",
       ttlSeconds: 300
     });
     const step = await fixture.service.advanceStep({
-      debateSessionId: result.debateSessionId,
+      parleySessionId: result.parleySessionId,
       expectedStateVersion: lease.stateVersion,
       orchestratorRunId: "run-020",
       userNudge: "Close the loop"
     });
-    const state = await fixture.service.getSessionState(result.debateSessionId);
+    const state = await fixture.service.getSessionState(result.parleySessionId);
     const transcriptPath = path.join(
       fixture.rootDir,
       ".multi-llm",
       "sessions",
-      result.debateSessionId,
+      result.parleySessionId,
       "transcript.jsonl"
     );
     const transcript = await readFile(transcriptPath, "utf8");
@@ -276,7 +276,7 @@ async function createFixture() {
   return {
     rootDir,
     store,
-    service: new DebateService(store, config),
+    service: new ParleyService(store, config),
     cleanup: async () => {
       await rm(rootDir, { recursive: true, force: true });
     }

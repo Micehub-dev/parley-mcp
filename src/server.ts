@@ -6,7 +6,7 @@ import { z } from "zod";
 
 import { loadConfig } from "./config.js";
 import { FileSystemStore } from "./storage/fs-store.js";
-import { DebateService } from "./services/debate-service.js";
+import { ParleyService } from "./services/parley-service.js";
 import type { TopicRecord } from "./types.js";
 import { createId } from "./utils/id.js";
 
@@ -16,7 +16,7 @@ export async function startServer(): Promise<void> {
   await store.ensureBaseLayout();
 
   const config = await loadConfig(rootDir);
-  const debateService = new DebateService(store, config);
+  const parleyService = new ParleyService(store, config);
 
   const server = new McpServer({
     name: "parley",
@@ -24,8 +24,8 @@ export async function startServer(): Promise<void> {
   });
 
   server.tool(
-    "debate_list_workspaces",
-    "List known workspaces managed by the debate server.",
+    "parley_list_workspaces",
+    "List known workspaces managed by the parley server.",
     {},
     async () => {
       const workspaces = await store.listWorkspaces();
@@ -48,7 +48,7 @@ export async function startServer(): Promise<void> {
   );
 
   server.tool(
-    "debate_create_topic",
+    "parley_create_topic",
     "Create a topic record under a workspace.",
     {
       workspaceId: z.string().default("default"),
@@ -96,7 +96,7 @@ export async function startServer(): Promise<void> {
   );
 
   server.tool(
-    "debate_list_topics",
+    "parley_list_topics",
     "List topics for a workspace.",
     {
       workspaceId: z.string().default("default"),
@@ -126,7 +126,7 @@ export async function startServer(): Promise<void> {
   );
 
   server.tool(
-    "debate_get_topic",
+    "parley_get_topic",
     "Fetch a single topic and its metadata.",
     {
       workspaceId: z.string().default("default"),
@@ -150,8 +150,8 @@ export async function startServer(): Promise<void> {
   );
 
   server.tool(
-    "debate_start",
-    "Create a debate session and persist initial metadata.",
+    "parley_start",
+    "Create a parley session and persist initial metadata.",
     {
       workspaceId: z.string().default("default"),
       topic: z.string().min(1),
@@ -174,7 +174,7 @@ export async function startServer(): Promise<void> {
       orchestrator,
       orchestratorRunId
     }) => {
-      const result = await debateService.startSession({
+      const result = await parleyService.startSession({
         workspaceId,
         workspaceRoot: rootDir,
         topic,
@@ -199,13 +199,13 @@ export async function startServer(): Promise<void> {
   );
 
   server.tool(
-    "debate_state",
-    "Get the current debate session state.",
+    "parley_state",
+    "Get the current parley session state.",
     {
-      debateSessionId: z.string().min(1)
+      parleySessionId: z.string().min(1)
     },
-    async ({ debateSessionId }) => {
-      const state = await debateService.getSessionState(debateSessionId);
+    async ({ parleySessionId }) => {
+      const state = await parleyService.getSessionState(parleySessionId);
       return {
         content: [
           {
@@ -218,16 +218,16 @@ export async function startServer(): Promise<void> {
   );
 
   server.tool(
-    "debate_claim_lease",
+    "parley_claim_lease",
     "Claim or refresh a short lease for orchestrating a session.",
     {
-      debateSessionId: z.string().min(1),
+      parleySessionId: z.string().min(1),
       orchestratorRunId: z.string().min(1),
       ttlSeconds: z.number().int().positive().max(3600).default(300)
     },
-    async ({ debateSessionId, orchestratorRunId, ttlSeconds }) => {
-      const result = await debateService.claimLease({
-        debateSessionId,
+    async ({ parleySessionId, orchestratorRunId, ttlSeconds }) => {
+      const result = await parleyService.claimLease({
+        parleySessionId,
         orchestratorRunId,
         ttlSeconds
       });
@@ -244,18 +244,18 @@ export async function startServer(): Promise<void> {
   );
 
   server.tool(
-    "debate_step",
+    "parley_step",
     "Advance session state and record an orchestrator step placeholder.",
     {
-      debateSessionId: z.string().min(1),
+      parleySessionId: z.string().min(1),
       expectedStateVersion: z.number().int().positive(),
       orchestratorRunId: z.string().min(1),
       speakerOrder: z.array(z.enum(["claude", "gemini"])).optional(),
       userNudge: z.string().optional()
     },
-    async ({ debateSessionId, expectedStateVersion, orchestratorRunId, speakerOrder, userNudge }) => {
-      const result = await debateService.advanceStep({
-        debateSessionId,
+    async ({ parleySessionId, expectedStateVersion, orchestratorRunId, speakerOrder, userNudge }) => {
+      const result = await parleyService.advanceStep({
+        parleySessionId,
         expectedStateVersion,
         orchestratorRunId,
         ...(speakerOrder ? { speakerOrder } : {}),
@@ -274,14 +274,14 @@ export async function startServer(): Promise<void> {
   );
 
   server.tool(
-    "debate_finish",
-    "Mark a debate session as finished and return a lightweight summary.",
+    "parley_finish",
+    "Mark a parley session as finished and return a lightweight summary.",
     {
-      debateSessionId: z.string().min(1),
+      parleySessionId: z.string().min(1),
       orchestratorRunId: z.string().optional()
     },
-    async ({ debateSessionId, orchestratorRunId }) => {
-      const result = await debateService.finishSession(debateSessionId, orchestratorRunId);
+    async ({ parleySessionId, orchestratorRunId }) => {
+      const result = await parleyService.finishSession(parleySessionId, orchestratorRunId);
 
       return {
         content: [

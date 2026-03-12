@@ -12,15 +12,15 @@
 
 - [x] session state schema stabilization
 - [x] lease/stateVersion conflict handling
-- [x] `debate_start`
-- [x] `debate_state`
-- [x] `debate_claim_lease`
-- [x] `debate_finish`
+- [x] `parley_start`
+- [x] `parley_state`
+- [x] `parley_claim_lease`
+- [x] `parley_finish`
 - [x] error model definition
 
 ## Stretch Scope
 
-- [ ] `debate_step` participant adapter connection draft only
+- [ ] `parley_step` participant adapter connection draft only
 
 ## Exit Criteria
 
@@ -45,7 +45,7 @@
 - [x] Move session lifecycle rules into a testable service layer
 - [x] Persist a stable `workspaceRoot` value instead of deriving a non-existent workspace path
 - [x] Require linked `topicId` values to resolve to a real topic before session creation
-- [x] Make `debate_finish` idempotent for repeated orchestrator calls
+- [x] Make `parley_finish` idempotent for repeated orchestrator calls
 
 Review:
 
@@ -62,7 +62,7 @@ Verification:
 
 - `npm run typecheck`
 - `npm run build`
-- `npx tsx --test test/debate-service.lifecycle.test.ts`
+- `npx tsx --test test/parley-service.lifecycle.test.ts`
 
 ### Task 2. Lease and Error Semantics
 
@@ -74,7 +74,7 @@ Review:
 
 - Error codes are now part of the domain layer instead of being hidden inside ad hoc exception text.
 - The highest-value failure modes for Sprint 1 are covered: bad model selection, bad topic linkage, lease ownership, finished sessions, and state version drift.
-- `debate_step` stays placeholder-only, but its contract boundary is now much harder to misuse.
+- `parley_step` stays placeholder-only, but its contract boundary is now much harder to misuse.
 
 Debt Watch:
 
@@ -85,19 +85,19 @@ Verification:
 
 - `npm run typecheck`
 - `npm run build`
-- `npx tsx --test test/debate-service.lifecycle.test.ts`
+- `npx tsx --test test/parley-service.lifecycle.test.ts`
 
 ### Task 3. Sprint Exit Quality Bar
 
 - [x] Add a stable test script and integrate tests into CI expectations
-- [x] Add high-value lifecycle integration coverage for `debate_claim_lease` and `debate_step`
+- [x] Add high-value lifecycle integration coverage for `parley_claim_lease` and `parley_step`
 - [x] Sync contract and risk docs with the implemented behavior
 
 Review:
 
 - The sprint now has a single command-level verification path: `npm test`.
 - CI will catch lifecycle regressions instead of relying on local discipline alone.
-- `debate_step` remains intentionally placeholder logic, but its current termination and transcript behavior are now covered.
+- `parley_step` remains intentionally placeholder logic, but its current termination and transcript behavior are now covered.
 
 Debt Watch:
 

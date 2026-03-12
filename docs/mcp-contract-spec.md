@@ -2,11 +2,11 @@
 
 ## Scope
 
-- `debate_start`
-- `debate_state`
-- `debate_claim_lease`
-- `debate_step`
-- `debate_finish`
+- `parley_start`
+- `parley_state`
+- `parley_claim_lease`
+- `parley_step`
+- `parley_finish`
 - topic/workspace query tools
 
 ## Contract Rules
@@ -35,7 +35,7 @@ Error messages should include the code in a machine-visible form such as `[lease
 
 ## Tool Specs
 
-### `debate_start`
+### `parley_start`
 
 입력:
 
@@ -51,7 +51,7 @@ Error messages should include the code in a machine-visible form such as `[lease
 
 출력:
 
-- debateSessionId
+- parleySessionId
 - appliedModels
 - maxTurns
 - stateVersion
@@ -62,11 +62,11 @@ Error messages should include the code in a machine-visible form such as `[lease
 - `invalid_argument`: disallowed participant model
 - `not_found`: linked `topicId` does not exist
 
-### `debate_state`
+### `parley_state`
 
 입력:
 
-- debateSessionId
+- parleySessionId
 
 출력:
 
@@ -76,11 +76,11 @@ Error messages should include the code in a machine-visible form such as `[lease
 
 - `not_found`: session does not exist
 
-### `debate_claim_lease`
+### `parley_claim_lease`
 
 입력:
 
-- debateSessionId
+- parleySessionId
 - orchestratorRunId
 - ttlSeconds
 
@@ -96,11 +96,11 @@ Error messages should include the code in a machine-visible form such as `[lease
 - `lease_conflict`: another valid lease owner already holds the session
 - `session_finished`: session is already finished
 
-### `debate_step`
+### `parley_step`
 
 입력:
 
-- debateSessionId
+- parleySessionId
 - expectedStateVersion
 - orchestratorRunId
 - speakerOrder?
@@ -119,17 +119,18 @@ Error messages should include the code in a machine-visible form such as `[lease
 - `lease_conflict`: lease owner does not match
 - `version_mismatch`: `expectedStateVersion` differs from the persisted state
 - `session_finished`: session is already finished
+- `participant_failure`: participant execution or output validation failed
 
-### `debate_finish`
+### `parley_finish`
 
 입력:
 
-- debateSessionId
+- parleySessionId
 - orchestratorRunId?
 
 출력:
 
-- sessionId
+- parleySessionId
 - status
 - turn
 - summary
@@ -140,7 +141,7 @@ Error messages should include the code in a machine-visible form such as `[lease
 
 특이사항:
 
-- `debate_finish` is idempotent for already finished sessions.
+- `parley_finish` is idempotent for already finished sessions.
 
 ## Open Questions
 

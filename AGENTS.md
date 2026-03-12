@@ -2,7 +2,7 @@
 
 ## Project Summary
 
-Parley is an orchestrator-agnostic MCP server for running and managing multi-LLM debate sessions across Codex, Claude, and Gemini.
+Parley is an orchestrator-agnostic MCP server for running and managing multi-LLM parley sessions across Codex, Claude, and Gemini.
 
 The current codebase is an MVP scaffold:
 
@@ -17,7 +17,7 @@ The current codebase is an MVP scaffold:
 Read these files first before making changes:
 
 1. `README.md`
-2. `multi-cli-debate-architecture.md`
+2. `multi-cli-parley-architecture.md`
 3. `docs/project-operating-plan.md`
 4. `docs/mcp-contract-spec.md`
 5. `docs/sprints/2026-sprint-1.md`
@@ -26,7 +26,7 @@ If code and docs disagree, prefer:
 
 1. implemented runtime behavior
 2. `docs/mcp-contract-spec.md`
-3. `multi-cli-debate-architecture.md`
+3. `multi-cli-parley-architecture.md`
 
 Then update the docs to remove drift.
 
@@ -78,10 +78,10 @@ npm run dev
 
 Priority order for upcoming work:
 
-1. `debate_step` real participant subprocess execution
+1. `parley_step` real participant subprocess execution
 2. structured participant output validation
 3. error taxonomy and recovery behavior
-4. rolling summary and debate conclusion generation
+4. rolling summary and conclusion generation
 5. workspace topic memory and search
 
 Do not jump ahead to UI or packaging unless the current sprint says so.
@@ -116,5 +116,5 @@ Escalate before changing:
 ## Notes For Future Agents
 
 - There is currently no committed test suite beyond build/typecheck.
-- `debate_step` is scaffolded and intentionally returns placeholder orchestration behavior for now.
+- `parley_step` is scaffolded and intentionally returns placeholder orchestration behavior for now.
 - Packaging for Claude plugins, Gemini extensions, and UI surfaces is explicitly later-phase work.
