@@ -1,5 +1,7 @@
 export type ParticipantKind = "claude" | "gemini";
 
+export type ParticipantStance = "agree" | "disagree" | "refine" | "undecided";
+
 export interface ParleyConfig {
   parley: {
     defaults: {
@@ -27,6 +29,22 @@ export interface ParticipantState {
   resumeId?: string;
 }
 
+export interface ParticipantResponse {
+  stance: ParticipantStance;
+  summary: string;
+  arguments: string[];
+  questions: string[];
+  proposed_next_step: string;
+}
+
+export interface SessionTurnRecord {
+  turn: number;
+  speakerOrder: ParticipantKind[];
+  completedAt: string;
+  userNudge?: string;
+  responses: Record<ParticipantKind, ParticipantResponse>;
+}
+
 export interface ParleySessionState {
   sessionId: string;
   workspaceId: string;
@@ -44,6 +62,7 @@ export interface ParleySessionState {
   updatedAt: string;
   createdAt: string;
   latestSummary?: string;
+  latestTurn?: SessionTurnRecord;
   participants: Record<ParticipantKind, ParticipantState>;
   orchestratorAuditLog: OrchestratorAuditLogEntry[];
 }

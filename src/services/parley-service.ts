@@ -1,6 +1,17 @@
-import type { ParleyConfig, ParleySessionState, TranscriptEntry } from "../types.js";
+import { ZodError } from "zod";
+
 import { ParleyError } from "../errors.js";
+import { participantResponseSchema } from "../participants/schema.js";
+import type { ParticipantAdapterRegistry } from "../participants/types.js";
 import { FileSystemStore } from "../storage/fs-store.js";
+import type {
+  OrchestratorAuditLogEntry,
+  ParleyConfig,
+  ParleySessionState,
+  ParticipantKind,
+  ParticipantResponse,
+  TranscriptEntry
+} from "../types.js";
 import { createId } from "../utils/id.js";
 
 export interface StartSessionInput {
@@ -33,7 +44,8 @@ export interface AdvanceStepInput {
 export class ParleyService {
   constructor(
     private readonly store: FileSystemStore,
-    private readonly config: ParleyConfig
+    private readonly config: ParleyConfig,
+    private readonly participantAdapters: ParticipantAdapterRegistry
   ) {}
 
   async startSession(input: StartSessionInput) {
@@ -180,9 +192,70 @@ export class ParleyService {
       });
     }
 
-    const now = new Date().toISOString();
     const nextTurn = state.turn + 1;
-    const order = input.speakerOrder ?? ["claude", "gemini"];
+    const order = this.resolveSpeakerOrder(input.speakerOrder);
+    const orderedResponses: Array<{
+      participant: ParticipantKind;
+      response: ParticipantResponse;
+      resumeId?: string;
+    }> = [];
+
+    for (const participant of order) {
+      const adapter = this.participantAdapters[participant];
+      const result = await adapter.run({
+        session: state,
+        turn: nextTurn,
+        speakerOrder: order,
+        priorResponses: orderedResponses.map(({ participant: previousParticipant, response }) => ({
+          participant: previousParticipant,
+          response
+        })),
+        ...(input.userNudge ? { userNudge: input.userNudge } : {})
+      });
+
+      if (!result.ok) {
+        throw new ParleyError(
+          "participant_failure",
+          `${participant} failed during parley_step: ${result.message}`,
+          {
+            participant,
+            reason: result.reason,
+            ...(typeof result.raw.exitCode === "number" ? { exitCode: result.raw.exitCode } : {})
+          }
+        );
+      }
+
+      try {
+        const response = participantResponseSchema.parse(result.output);
+        orderedResponses.push({
+          participant,
+          response,
+          ...(result.resumeId ? { resumeId: result.resumeId } : {})
+        });
+      } catch (error) {
+        const message =
+          error instanceof ZodError
+            ? error.issues.map((issue) => issue.message).join("; ")
+            : "Participant output failed validation.";
+        throw new ParleyError(
+          "participant_failure",
+          `${participant} returned invalid structured output: ${message}`,
+          {
+            participant,
+            reason: "invalid_output"
+          }
+        );
+      }
+    }
+
+    const responses = this.toResponseRecord(orderedResponses);
+    const now = new Date().toISOString();
+
+    for (const entry of orderedResponses) {
+      if (entry.resumeId) {
+        state.participants[entry.participant].resumeId = entry.resumeId;
+      }
+    }
 
     const transcriptEntries: TranscriptEntry[] = [
       {
@@ -195,18 +268,45 @@ export class ParleyService {
         metadata: {
           speakerOrder: order.join(",")
         }
-      }
+      },
+      ...order.map((participant) => {
+        const participantState = state.participants[participant];
+        const response = responses[participant];
+        const metadata: Record<string, string | number | boolean> = {
+          model: participantState.model,
+          stance: response.stance
+        };
+
+        if (participantState.resumeId) {
+          metadata.resumeId = participantState.resumeId;
+        }
+
+        return {
+          timestamp: now,
+          kind: "participant" as const,
+          speaker: participant,
+          message: JSON.stringify(response),
+          metadata
+        };
+      })
     ];
 
     state.turn = nextTurn;
     state.stateVersion += 1;
     state.lastWriter = input.orchestratorRunId;
     state.updatedAt = now;
-    state.latestSummary =
-      "Participant subprocess integration is not wired yet. This step currently records orchestration metadata only.";
+    state.latestTurn = {
+      turn: nextTurn,
+      speakerOrder: order,
+      completedAt: now,
+      ...(input.userNudge ? { userNudge: input.userNudge } : {}),
+      responses
+    };
+    state.latestSummary = this.buildLatestSummary(responses);
 
     if (state.turn >= state.maxTurns) {
       state.status = "finished";
+      state.orchestratorAuditLog = this.markAuditCompleted(state.orchestratorAuditLog, now);
     }
 
     await this.store.appendTranscript(state.sessionId, transcriptEntries);
@@ -216,8 +316,9 @@ export class ParleyService {
       turn: state.turn,
       stateVersion: state.stateVersion,
       finished: state.status === "finished",
-      note:
-        "CLI participant execution is scaffolded for the next phase. This step recorded the orchestrator event and advanced state."
+      speakerOrder: order,
+      responses,
+      latestSummary: state.latestSummary
     };
   }
 
@@ -235,9 +336,7 @@ export class ParleyService {
     if (orchestratorRunId) {
       state.lastWriter = orchestratorRunId;
     }
-    state.orchestratorAuditLog = state.orchestratorAuditLog.map((entry, index, entries) =>
-      index === entries.length - 1 && !entry.completedAt ? { ...entry, completedAt: now } : entry
-    );
+    state.orchestratorAuditLog = this.markAuditCompleted(state.orchestratorAuditLog, now);
 
     await this.store.saveSession(state);
 
@@ -265,6 +364,63 @@ export class ParleyService {
     }
 
     return model;
+  }
+
+  private resolveSpeakerOrder(
+    speakerOrder?: Array<"claude" | "gemini">
+  ): Array<"claude" | "gemini"> {
+    const order = speakerOrder ?? ["claude", "gemini"];
+    if (
+      order.length !== 2 ||
+      order[0] === order[1] ||
+      !order.includes("claude") ||
+      !order.includes("gemini")
+    ) {
+      throw new ParleyError(
+        "invalid_argument",
+        "speakerOrder must include claude and gemini exactly once."
+      );
+    }
+
+    return order;
+  }
+
+  private toResponseRecord(
+    orderedResponses: Array<{
+      participant: ParticipantKind;
+      response: ParticipantResponse;
+    }>
+  ): Record<ParticipantKind, ParticipantResponse> {
+    const responseMap = new Map(
+      orderedResponses.map((entry) => [entry.participant, entry.response] as const)
+    );
+    const claude = responseMap.get("claude");
+    const gemini = responseMap.get("gemini");
+
+    if (!claude || !gemini) {
+      throw new ParleyError(
+        "participant_failure",
+        "Both participant responses must be present before state is persisted."
+      );
+    }
+
+    return {
+      claude,
+      gemini
+    };
+  }
+
+  private buildLatestSummary(responses: Record<ParticipantKind, ParticipantResponse>): string {
+    return [
+      `Claude (${responses.claude.stance}): ${responses.claude.summary}`,
+      `Gemini (${responses.gemini.stance}): ${responses.gemini.summary}`
+    ].join(" | ");
+  }
+
+  private markAuditCompleted(auditLog: OrchestratorAuditLogEntry[], completedAt: string) {
+    return auditLog.map((entry, index, entries) =>
+      index === entries.length - 1 && !entry.completedAt ? { ...entry, completedAt } : entry
+    );
   }
 
   private assertActiveSession(state: ParleySessionState) {

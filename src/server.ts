@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import { loadConfig } from "./config.js";
+import { createParticipantAdapters } from "./participants/adapters.js";
 import { FileSystemStore } from "./storage/fs-store.js";
 import { ParleyService } from "./services/parley-service.js";
 import type { TopicRecord } from "./types.js";
@@ -16,7 +17,8 @@ export async function startServer(): Promise<void> {
   await store.ensureBaseLayout();
 
   const config = await loadConfig(rootDir);
-  const parleyService = new ParleyService(store, config);
+  const participantAdapters = createParticipantAdapters();
+  const parleyService = new ParleyService(store, config, participantAdapters);
 
   const server = new McpServer({
     name: "parley",
@@ -245,12 +247,12 @@ export async function startServer(): Promise<void> {
 
   server.tool(
     "parley_step",
-    "Advance session state and record an orchestrator step placeholder.",
+    "Advance session state by executing both participant adapters.",
     {
       parleySessionId: z.string().min(1),
       expectedStateVersion: z.number().int().positive(),
       orchestratorRunId: z.string().min(1),
-      speakerOrder: z.array(z.enum(["claude", "gemini"])).optional(),
+      speakerOrder: z.array(z.enum(["claude", "gemini"])).length(2).optional(),
       userNudge: z.string().optional()
     },
     async ({ parleySessionId, expectedStateVersion, orchestratorRunId, speakerOrder, userNudge }) => {
