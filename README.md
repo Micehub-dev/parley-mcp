@@ -27,9 +27,10 @@ Most AI tooling gets trapped inside one client surface. Parley takes the opposit
 - Orchestrator-agnostic MCP server
 - Filesystem-backed workspace, topic, and parley session storage
 - Lease and `stateVersion` primitives for safe concurrent orchestration
-- Structured tool surface for topic creation, session start, state lookup, and session progression
+- Structured tool surface for topic creation, session start, state lookup, lease claiming, and session progression
 - TypeScript + Zod-based validation for predictable inputs and outputs
-- Clear path toward real `claude` and `gemini` subprocess adapters
+- Real `claude` and `gemini` subprocess adapter boundary with shared structured output validation
+- Resume ID persistence and last-turn response snapshots for multi-step session continuation
 
 ## Architecture
 
@@ -48,14 +49,14 @@ flowchart LR
 
 ## Current Status
 
-The repository is currently at the **MVP scaffold** stage.
+The repository is currently at the **participant-runtime MVP** stage.
 
-- MCP server skeleton is implemented
+- MCP server skeleton and core session lifecycle are implemented
 - Filesystem-backed storage is implemented
-- Project operating docs and agent onboarding docs are included
-- `parley_step` is scaffolded and ready for real participant execution work
-- ESLint flat-config baseline is configured for lightweight CI linting
-- CI is configured for install, lint, typecheck, and build
+- `parley_step` executes participant adapters and validates shared structured responses
+- Session state persists participant `resumeId` values and `latestTurn` snapshots
+- Service and adapter tests cover happy-path execution and key failure modes
+- CI is configured for install, lint, test, typecheck, and build
 
 ## Repository Layout
 
@@ -68,8 +69,11 @@ The repository is currently at the **MVP scaffold** stage.
 |   |-- index.ts
 |   |-- server.ts
 |   |-- config.ts
+|   |-- participants/
+|   |-- services/
 |   |-- storage/fs-store.ts
 |   `-- types.ts
+|-- test/
 |-- AGENTS.md
 |-- LICENSE
 |-- README.md
@@ -92,6 +96,7 @@ npm install
 ### Validate
 
 ```bash
+npm test
 npm run lint
 npm run typecheck
 npm run build
@@ -114,8 +119,7 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 
 ## Roadmap
 
-- Complete the core session lifecycle and error taxonomy
-- Add real `claude` / `gemini` subprocess adapters
+- Add operator-friendly subprocess diagnostics and timeout/retry controls
 - Add rolling summaries and conclusion generation
 - Expand workspace memory, topic boards, and search
 - Package thin surfaces for plugins, extensions, and future UI layers
