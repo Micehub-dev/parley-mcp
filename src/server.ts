@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 import { loadConfig } from "./config.js";
+import { ParleyError, isParleyError } from "./errors.js";
 import { createParticipantAdapters } from "./participants/adapters.js";
 import { FileSystemStore } from "./storage/fs-store.js";
 import { ParleyService } from "./services/parley-service.js";
@@ -29,7 +30,8 @@ export async function startServer(): Promise<void> {
     "parley_list_workspaces",
     "List known workspaces managed by the parley server.",
     {},
-    async () => {
+    async () =>
+      executeTool(async () => {
       const workspaces = await store.listWorkspaces();
       const topicsByWorkspace = await Promise.all(
         workspaces.map(async (workspace) => ({
@@ -46,7 +48,7 @@ export async function startServer(): Promise<void> {
           }
         ]
       };
-    }
+      })
   );
 
   server.tool(
@@ -59,7 +61,8 @@ export async function startServer(): Promise<void> {
       tags: z.array(z.string().min(1)).optional(),
       status: z.enum(["open", "in_progress", "resolved"]).optional()
     },
-    async ({ workspaceId, title, body, tags, status }) => {
+    async ({ workspaceId, title, body, tags, status }) =>
+      executeTool(async () => {
       const now = new Date().toISOString();
       const topicId = createId("topic");
 
@@ -94,7 +97,7 @@ export async function startServer(): Promise<void> {
           }
         ]
       };
-    }
+      })
   );
 
   server.tool(
@@ -105,7 +108,8 @@ export async function startServer(): Promise<void> {
       status: z.enum(["open", "in_progress", "resolved"]).optional(),
       query: z.string().optional()
     },
-    async ({ workspaceId, status, query }) => {
+    async ({ workspaceId, status, query }) =>
+      executeTool(async () => {
       const topics = await store.listTopics(workspaceId);
       const normalizedQuery = query?.toLowerCase();
       const filtered = topics.filter((topic) => {
@@ -124,7 +128,7 @@ export async function startServer(): Promise<void> {
           }
         ]
       };
-    }
+      })
   );
 
   server.tool(
@@ -134,10 +138,13 @@ export async function startServer(): Promise<void> {
       workspaceId: z.string().default("default"),
       topicId: z.string().min(1)
     },
-    async ({ workspaceId, topicId }) => {
+    async ({ workspaceId, topicId }) =>
+      executeTool(async () => {
       const topic = await store.getTopic(workspaceId, topicId);
       if (!topic) {
-        throw new Error(`[not_found] Topic not found: ${topicId}`);
+        throw new ParleyError("not_found", `Topic not found: ${topicId}`, {
+          topicId
+        });
       }
 
       return {
@@ -148,7 +155,7 @@ export async function startServer(): Promise<void> {
           }
         ]
       };
-    }
+      })
   );
 
   server.tool(
@@ -175,7 +182,8 @@ export async function startServer(): Promise<void> {
       systemPrompt,
       orchestrator,
       orchestratorRunId
-    }) => {
+    }) =>
+      executeTool(async () => {
       const result = await parleyService.startSession({
         workspaceId,
         workspaceRoot: rootDir,
@@ -197,7 +205,7 @@ export async function startServer(): Promise<void> {
           }
         ]
       };
-    }
+      })
   );
 
   server.tool(
@@ -206,7 +214,8 @@ export async function startServer(): Promise<void> {
     {
       parleySessionId: z.string().min(1)
     },
-    async ({ parleySessionId }) => {
+    async ({ parleySessionId }) =>
+      executeTool(async () => {
       const state = await parleyService.getSessionState(parleySessionId);
       return {
         content: [
@@ -216,7 +225,7 @@ export async function startServer(): Promise<void> {
           }
         ]
       };
-    }
+      })
   );
 
   server.tool(
@@ -227,7 +236,8 @@ export async function startServer(): Promise<void> {
       orchestratorRunId: z.string().min(1),
       ttlSeconds: z.number().int().positive().max(3600).default(300)
     },
-    async ({ parleySessionId, orchestratorRunId, ttlSeconds }) => {
+    async ({ parleySessionId, orchestratorRunId, ttlSeconds }) =>
+      executeTool(async () => {
       const result = await parleyService.claimLease({
         parleySessionId,
         orchestratorRunId,
@@ -242,7 +252,7 @@ export async function startServer(): Promise<void> {
           }
         ]
       };
-    }
+      })
   );
 
   server.tool(
@@ -255,7 +265,8 @@ export async function startServer(): Promise<void> {
       speakerOrder: z.array(z.enum(["claude", "gemini"])).length(2).optional(),
       userNudge: z.string().optional()
     },
-    async ({ parleySessionId, expectedStateVersion, orchestratorRunId, speakerOrder, userNudge }) => {
+    async ({ parleySessionId, expectedStateVersion, orchestratorRunId, speakerOrder, userNudge }) =>
+      executeTool(async () => {
       const result = await parleyService.advanceStep({
         parleySessionId,
         expectedStateVersion,
@@ -272,7 +283,7 @@ export async function startServer(): Promise<void> {
           }
         ]
       };
-    }
+      })
   );
 
   server.tool(
@@ -282,7 +293,8 @@ export async function startServer(): Promise<void> {
       parleySessionId: z.string().min(1),
       orchestratorRunId: z.string().optional()
     },
-    async ({ parleySessionId, orchestratorRunId }) => {
+    async ({ parleySessionId, orchestratorRunId }) =>
+      executeTool(async () => {
       const result = await parleyService.finishSession(parleySessionId, orchestratorRunId);
 
       return {
@@ -293,9 +305,46 @@ export async function startServer(): Promise<void> {
           }
         ]
       };
-    }
+      })
   );
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
+}
+
+async function executeTool(
+  operation: () => Promise<{
+    content: Array<{
+      type: "text";
+      text: string;
+    }>;
+  }>
+) {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isParleyError(error)) {
+      throw error;
+    }
+
+    return {
+      isError: true,
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify(
+            {
+              error: {
+                code: error.code,
+                message: error.message,
+                ...(error.details ? { details: error.details } : {})
+              }
+            },
+            null,
+            2
+          )
+        }
+      ]
+    };
+  }
 }

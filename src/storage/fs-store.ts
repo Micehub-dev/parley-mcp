@@ -106,6 +106,17 @@ export class FileSystemStore {
     await appendTranscript(sessionId, entries, this.dataRoot);
   }
 
+  async writeSessionDiagnostic(
+    sessionId: string,
+    diagnosticId: string,
+    payload: unknown
+  ): Promise<string> {
+    const diagnosticsDir = path.join(this.dataRoot, "sessions", sessionId, "diagnostics");
+    const diagnosticPath = path.join(diagnosticsDir, `${diagnosticId}.json`);
+    await writeJson(diagnosticPath, payload);
+    return diagnosticPath;
+  }
+
   async updateTopic(record: TopicRecord): Promise<void> {
     const topicPath = path.join(
       this.dataRoot,

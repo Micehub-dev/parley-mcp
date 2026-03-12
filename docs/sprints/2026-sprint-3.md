@@ -17,11 +17,11 @@
 
 ## Committed Scope
 
-- [ ] Freeze recovery rules for `parley_step` failure, stale lease handling, and retry ownership
-- [ ] Persist debug-friendly subprocess diagnostics outside normalized session state
-- [ ] Tighten the error taxonomy so orchestrators can distinguish recoverable vs terminal failures
-- [ ] Add at least one MCP stdio end-to-end test that exercises `start -> claim_lease -> step -> finish`
-- [ ] Refresh contract and risk docs to match the final recovery behavior
+- [x] Freeze recovery rules for `parley_step` failure, stale lease handling, and retry ownership
+- [x] Persist debug-friendly subprocess diagnostics outside normalized session state
+- [x] Tighten the error taxonomy so orchestrators can distinguish recoverable vs terminal failures
+- [x] Add at least one MCP stdio end-to-end test that exercises `start -> claim_lease -> step -> finish`
+- [x] Refresh contract and risk docs to match the final recovery behavior
 
 ## Stretch Scope
 
@@ -38,11 +38,11 @@
 
 ## Exit Criteria
 
-- [ ] Recovery behavior for stale lease, participant failure, and replay boundaries is documented and implemented
-- [ ] A failed participant step leaves enough diagnostic data for operator triage without polluting normalized session state
-- [ ] At least one stdio MCP integration scenario passes in automated verification
-- [ ] `docs/mcp-contract-spec.md` and `docs/risk-register.md` reflect the final behavior
-- [ ] `npm test`, `npm run typecheck`, `npm run lint`, and `npm run build` are green
+- [x] Recovery behavior for stale lease, participant failure, and replay boundaries is documented and implemented
+- [x] A failed participant step leaves enough diagnostic data for operator triage without polluting normalized session state
+- [x] At least one stdio MCP integration scenario passes in automated verification
+- [x] `docs/mcp-contract-spec.md` and `docs/risk-register.md` reflect the final behavior
+- [x] `npm test`, `npm run typecheck`, `npm run lint`, and `npm run build` are green
 
 ## Dependencies
 
@@ -59,9 +59,9 @@
 
 ### Task 1. Recovery Semantics and Error Contract
 
-- [ ] Define stale-lease recovery behavior and document who may reclaim execution
-- [ ] Distinguish recoverable participant/runtime failures from terminal contract failures
-- [ ] Clarify replay and retry expectations after subprocess completion but before state commit
+- [x] Define stale-lease recovery behavior and document who may reclaim execution
+- [x] Distinguish recoverable participant/runtime failures from terminal contract failures
+- [x] Clarify replay and retry expectations after subprocess completion but before state commit
 
 Review focus:
 
@@ -84,11 +84,17 @@ Verification:
 - `npm run typecheck`
 - targeted failure-mode tests for stale lease and retry scenarios
 
+Review:
+
+- Expired leases no longer create ambiguous execution ownership; they must be reclaimed explicitly through `parley_claim_lease` before `parley_step` resumes.
+- Tool failures now return structured `isError` payloads with machine-readable codes and details instead of relying only on transport exceptions.
+- Replay boundaries are explicit: `storage_failure` differentiates between "state not committed" and "state already committed".
+
 ### Task 2. Diagnostics and Observability
 
-- [ ] Capture subprocess stdout/stderr, exit code, and execution metadata in a debug-friendly artifact
-- [ ] Keep normalized session state limited to product-facing data such as structured responses and resume IDs
-- [ ] Decide whether diagnostics attach per step, per session, or both
+- [x] Capture subprocess stdout/stderr, exit code, and execution metadata in a debug-friendly artifact
+- [x] Keep normalized session state limited to product-facing data such as structured responses and resume IDs
+- [x] Decide whether diagnostics attach per step, per session, or both
 
 Review focus:
 
@@ -110,11 +116,17 @@ Verification:
 - `npm test`
 - fixture-backed checks for diagnostic artifact creation and failure-path persistence
 
+Review:
+
+- Failed step attempts now persist JSON diagnostics under `.multi-llm/sessions/<sessionId>/diagnostics/`.
+- Session state remains normalized around product-facing fields such as `latestTurn`, `latestSummary`, and participant `resumeId` values.
+- Diagnostics are attached per failed step attempt, which keeps triage local without bloating stable session state.
+
 ### Task 3. MCP End-to-End Verification
 
-- [ ] Add one stdio transport integration test for a successful end-to-end session flow
-- [ ] Add one end-to-end failure-path test if the harness cost stays reasonable
-- [ ] Reflect actual status in `docs/test-matrix.md`
+- [x] Add one stdio transport integration test for a successful end-to-end session flow
+- [x] Add one end-to-end failure-path test if the harness cost stays reasonable
+- [x] Reflect actual status in `docs/test-matrix.md`
 
 Review focus:
 
@@ -137,11 +149,16 @@ Verification:
 - `npm run build`
 - integration test command added to the normal verification path if stable
 
+Review:
+
+- The automated suite now proves the stdio MCP server wiring end to end instead of only the service layer.
+- A second integration case verifies structured tool errors for `version_mismatch`, which reduces drift between handler wiring and domain semantics.
+
 ### Task 4. Documentation and Risk Refresh
 
-- [ ] Update `docs/mcp-contract-spec.md` with final recovery and diagnostic behavior
-- [ ] Refresh `docs/risk-register.md` review dates and mitigations based on implemented recovery rules
-- [ ] Update roadmap/status language that still implies `parley_step` is placeholder-level
+- [x] Update `docs/mcp-contract-spec.md` with final recovery and diagnostic behavior
+- [x] Refresh `docs/risk-register.md` review dates and mitigations based on implemented recovery rules
+- [x] Update roadmap/status language that still implies `parley_step` is placeholder-level
 
 Review focus:
 
@@ -156,6 +173,16 @@ Verification:
 
 - doc review against implemented code paths
 - `npm run lint`
+
+Review:
+
+- Contract docs now describe the structured tool error envelope, stale-lease reclaim rules, and storage replay boundaries.
+- Risk and matrix docs reflect the implemented reliability bar rather than the earlier scaffold assumptions.
+
+Debt Watch:
+
+- Diagnostic redaction policy is still a later step before broader operator exposure.
+- Timeout and retry defaults remain orchestrator-owned for now.
 
 ## Open Questions To Resolve In This Sprint
 

@@ -24,10 +24,11 @@ abstract class BaseParticipantAdapter implements ParticipantAdapter {
   constructor(private readonly executor: CommandExecutor) {}
 
   async run(input: ParticipantAdapterInput): Promise<ParticipantExecutionResult> {
-    const commandInput = this.buildCommand(input);
+    let commandInput: CommandExecutionInput | undefined;
 
     let raw: ParticipantRawExecution;
     try {
+      commandInput = this.buildCommand(input);
       raw = await this.executor.run(commandInput);
     } catch (error) {
       return {
@@ -36,8 +37,8 @@ abstract class BaseParticipantAdapter implements ParticipantAdapter {
         reason: "process_error",
         message: error instanceof Error ? error.message : "Participant process failed to start.",
         raw: {
-          command: commandInput.command,
-          args: commandInput.args,
+          command: commandInput?.command ?? this.kind,
+          args: commandInput?.args ?? [],
           stdout: "",
           stderr: "",
           exitCode: null
@@ -91,6 +92,7 @@ class ClaudeParticipantAdapter extends BaseParticipantAdapter {
 
   protected buildCommand(input: ParticipantAdapterInput): CommandExecutionInput {
     const participantState = input.session.participants[this.kind];
+    const launch = resolveParticipantLaunch(this.kind);
     const args = [
       "-p",
       "--output-format",
@@ -111,8 +113,8 @@ class ClaudeParticipantAdapter extends BaseParticipantAdapter {
     args.push(buildParticipantPrompt(this.kind, input));
 
     return {
-      command: "claude",
-      args,
+      command: launch.command,
+      args: [...launch.leadingArgs, ...args],
       cwd: input.session.workspaceRoot
     };
   }
@@ -133,6 +135,7 @@ class GeminiParticipantAdapter extends BaseParticipantAdapter {
 
   protected buildCommand(input: ParticipantAdapterInput): CommandExecutionInput {
     const participantState = input.session.participants[this.kind];
+    const launch = resolveParticipantLaunch(this.kind);
     const args = [
       "-p",
       buildParticipantPrompt(this.kind, input),
@@ -147,8 +150,8 @@ class GeminiParticipantAdapter extends BaseParticipantAdapter {
     }
 
     return {
-      command: "gemini",
-      args,
+      command: launch.command,
+      args: [...launch.leadingArgs, ...args],
       cwd: input.session.workspaceRoot
     };
   }
@@ -230,4 +233,37 @@ function getFirstString(
   }
 
   return undefined;
+}
+
+function resolveParticipantLaunch(participant: ParticipantKind): {
+  command: string;
+  leadingArgs: string[];
+} {
+  const prefix = `PARLEY_${participant.toUpperCase()}`;
+  const configuredCommand = process.env[`${prefix}_COMMAND`];
+  const configuredArgs = process.env[`${prefix}_ARGS_JSON`];
+
+  return {
+    command: configuredCommand && configuredCommand.length > 0 ? configuredCommand : participant,
+    leadingArgs: parseLaunchArgs(configuredArgs)
+  };
+}
+
+function parseLaunchArgs(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value) as unknown;
+  } catch {
+    throw new Error("Participant launcher args must be a JSON string array.");
+  }
+
+  if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string")) {
+    throw new Error("Participant launcher args must be a JSON string array.");
+  }
+
+  return parsed;
 }

@@ -2,6 +2,7 @@ import { ZodError } from "zod";
 
 import { ParleyError } from "../errors.js";
 import { participantResponseSchema } from "../participants/schema.js";
+import type { ParticipantRawExecution } from "../participants/types.js";
 import type { ParticipantAdapterRegistry } from "../participants/types.js";
 import { FileSystemStore } from "../storage/fs-store.js";
 import type {
@@ -39,6 +40,18 @@ export interface AdvanceStepInput {
   orchestratorRunId: string;
   speakerOrder?: Array<"claude" | "gemini">;
   userNudge?: string;
+}
+
+interface StepParticipantDiagnostic {
+  participant: ParticipantKind;
+  model: string;
+  status: "ok" | "failed" | "invalid_output";
+  raw: ParticipantRawExecution;
+  resumeId?: string;
+  response?: ParticipantResponse;
+  failureKind?: "process_error" | "invalid_output";
+  message?: string;
+  retryable?: boolean;
 }
 
 export class ParleyService {
@@ -186,19 +199,39 @@ export class ParleyService {
       );
     }
 
-    if (state.leaseOwner && state.leaseOwner !== input.orchestratorRunId) {
-      throw new ParleyError("lease_conflict", `Session lease is owned by ${state.leaseOwner}.`, {
-        leaseOwner: state.leaseOwner
-      });
+    const leaseStatus = this.getLeaseStatus(state);
+
+    if (state.leaseOwner) {
+      if (!leaseStatus.isActive) {
+        throw new ParleyError(
+          "lease_conflict",
+          "Session lease has expired and must be reclaimed before parley_step.",
+          {
+            leaseOwner: state.leaseOwner,
+            retryable: true,
+            staleLease: true
+          }
+        );
+      }
+
+      if (state.leaseOwner !== input.orchestratorRunId) {
+        throw new ParleyError("lease_conflict", `Session lease is owned by ${state.leaseOwner}.`, {
+          leaseOwner: state.leaseOwner,
+          retryable: true,
+          staleLease: false
+        });
+      }
     }
 
     const nextTurn = state.turn + 1;
     const order = this.resolveSpeakerOrder(input.speakerOrder);
+    const startedAt = new Date().toISOString();
     const orderedResponses: Array<{
       participant: ParticipantKind;
       response: ParticipantResponse;
       resumeId?: string;
     }> = [];
+    const participantDiagnostics: StepParticipantDiagnostic[] = [];
 
     for (const participant of order) {
       const adapter = this.participantAdapters[participant];
@@ -214,12 +247,34 @@ export class ParleyService {
       });
 
       if (!result.ok) {
+        participantDiagnostics.push({
+          participant,
+          model: state.participants[participant].model,
+          status: "failed",
+          raw: result.raw,
+          failureKind: result.reason,
+          message: result.message,
+          retryable: result.reason === "process_error"
+        });
+        const diagnosticsPersisted = await this.persistStepDiagnostic({
+          state,
+          input,
+          turn: nextTurn,
+          speakerOrder: order,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          outcome: "participant_failure",
+          stateCommitStatus: "not_committed",
+          participantDiagnostics
+        });
         throw new ParleyError(
           "participant_failure",
           `${participant} failed during parley_step: ${result.message}`,
           {
             participant,
             reason: result.reason,
+            retryable: result.reason === "process_error",
+            diagnosticsPersisted,
             ...(typeof result.raw.exitCode === "number" ? { exitCode: result.raw.exitCode } : {})
           }
         );
@@ -227,6 +282,14 @@ export class ParleyService {
 
       try {
         const response = participantResponseSchema.parse(result.output);
+        participantDiagnostics.push({
+          participant,
+          model: state.participants[participant].model,
+          status: "ok",
+          raw: result.raw,
+          response,
+          ...(result.resumeId ? { resumeId: result.resumeId } : {})
+        });
         orderedResponses.push({
           participant,
           response,
@@ -237,12 +300,34 @@ export class ParleyService {
           error instanceof ZodError
             ? error.issues.map((issue) => issue.message).join("; ")
             : "Participant output failed validation.";
+        participantDiagnostics.push({
+          participant,
+          model: state.participants[participant].model,
+          status: "invalid_output",
+          raw: result.raw,
+          message,
+          failureKind: "invalid_output",
+          retryable: false
+        });
+        const diagnosticsPersisted = await this.persistStepDiagnostic({
+          state,
+          input,
+          turn: nextTurn,
+          speakerOrder: order,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          outcome: "participant_failure",
+          stateCommitStatus: "not_committed",
+          participantDiagnostics
+        });
         throw new ParleyError(
           "participant_failure",
           `${participant} returned invalid structured output: ${message}`,
           {
             participant,
-            reason: "invalid_output"
+            reason: "invalid_output",
+            retryable: false,
+            diagnosticsPersisted
           }
         );
       }
@@ -309,8 +394,55 @@ export class ParleyService {
       state.orchestratorAuditLog = this.markAuditCompleted(state.orchestratorAuditLog, now);
     }
 
-    await this.store.appendTranscript(state.sessionId, transcriptEntries);
-    await this.store.saveSession(state);
+    try {
+      await this.store.saveSession(state);
+    } catch (_error) {
+      const diagnosticsPersisted = await this.persistStepDiagnostic({
+        state,
+        input,
+        turn: nextTurn,
+        speakerOrder: order,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        outcome: "storage_failure",
+        stateCommitStatus: "not_committed",
+        participantDiagnostics
+      });
+      throw new ParleyError(
+        "storage_failure",
+        `Failed to persist session state for turn ${nextTurn}.`,
+        {
+          retryable: true,
+          stateCommitted: false,
+          diagnosticsPersisted
+        }
+      );
+    }
+
+    try {
+      await this.store.appendTranscript(state.sessionId, transcriptEntries);
+    } catch (_error) {
+      const diagnosticsPersisted = await this.persistStepDiagnostic({
+        state,
+        input,
+        turn: nextTurn,
+        speakerOrder: order,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        outcome: "storage_failure",
+        stateCommitStatus: "session_state_committed",
+        participantDiagnostics
+      });
+      throw new ParleyError(
+        "storage_failure",
+        "Step state was committed, but transcript append failed. Read parley_state before retrying.",
+        {
+          retryable: false,
+          stateCommitted: true,
+          diagnosticsPersisted
+        }
+      );
+    }
 
     return {
       turn: state.turn,
@@ -385,6 +517,18 @@ export class ParleyService {
     return order;
   }
 
+  private getLeaseStatus(state: ParleySessionState) {
+    if (!state.leaseOwner || !state.leaseExpiresAt) {
+      return {
+        isActive: false
+      };
+    }
+
+    return {
+      isActive: new Date(state.leaseExpiresAt).getTime() > Date.now()
+    };
+  }
+
   private toResponseRecord(
     orderedResponses: Array<{
       participant: ParticipantKind;
@@ -421,6 +565,48 @@ export class ParleyService {
     return auditLog.map((entry, index, entries) =>
       index === entries.length - 1 && !entry.completedAt ? { ...entry, completedAt } : entry
     );
+  }
+
+  private async persistStepDiagnostic(input: {
+    state: ParleySessionState;
+    turn: number;
+    speakerOrder: ParticipantKind[];
+    startedAt: string;
+    completedAt: string;
+    outcome: "participant_failure" | "storage_failure";
+    stateCommitStatus: "not_committed" | "session_state_committed";
+    participantDiagnostics: StepParticipantDiagnostic[];
+    input: AdvanceStepInput;
+  }): Promise<boolean> {
+    const diagnosticId = `${this.formatTurnDiagnosticPrefix(input.turn)}-${input.outcome}-${Date.now()}`;
+
+    try {
+      await this.store.writeSessionDiagnostic(input.state.sessionId, diagnosticId, {
+        sessionId: input.state.sessionId,
+        turn: input.turn,
+        expectedStateVersion: input.input.expectedStateVersion,
+        orchestratorRunId: input.input.orchestratorRunId,
+        speakerOrder: input.speakerOrder,
+        ...(input.input.userNudge ? { userNudge: input.input.userNudge } : {}),
+        startedAt: input.startedAt,
+        completedAt: input.completedAt,
+        outcome: input.outcome,
+        stateCommitStatus: input.stateCommitStatus,
+        lease: {
+          leaseOwner: input.state.leaseOwner ?? null,
+          leaseExpiresAt: input.state.leaseExpiresAt ?? null,
+          active: this.getLeaseStatus(input.state).isActive
+        },
+        participants: input.participantDiagnostics
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private formatTurnDiagnosticPrefix(turn: number): string {
+    return `step-${turn.toString().padStart(4, "0")}`;
   }
 
   private assertActiveSession(state: ParleySessionState) {
