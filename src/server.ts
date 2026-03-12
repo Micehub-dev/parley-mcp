@@ -288,7 +288,7 @@ export async function startServer(): Promise<void> {
 
   server.tool(
     "parley_finish",
-    "Mark a parley session as finished and return a lightweight summary.",
+    "Mark a parley session as finished and return a structured conclusion.",
     {
       parleySessionId: z.string().min(1),
       orchestratorRunId: z.string().optional()
@@ -296,6 +296,31 @@ export async function startServer(): Promise<void> {
     async ({ parleySessionId, orchestratorRunId }) =>
       executeTool(async () => {
       const result = await parleyService.finishSession(parleySessionId, orchestratorRunId);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+      })
+  );
+
+  server.tool(
+    "parley_promote_summary",
+    "Promote a finished session conclusion into linked topic memory.",
+    {
+      parleySessionId: z.string().min(1),
+      topicId: z.string().optional()
+    },
+    async ({ parleySessionId, topicId }) =>
+      executeTool(async () => {
+      const result = await parleyService.promoteSummary({
+        parleySessionId,
+        ...(topicId ? { topicId } : {})
+      });
 
       return {
         content: [

@@ -11,6 +11,9 @@ import type {
   ParleySessionState,
   ParticipantKind,
   ParticipantResponse,
+  RollingSummary,
+  SessionConclusion,
+  TopicRecord,
   TranscriptEntry
 } from "../types.js";
 import { createId } from "../utils/id.js";
@@ -40,6 +43,11 @@ export interface AdvanceStepInput {
   orchestratorRunId: string;
   speakerOrder?: Array<"claude" | "gemini">;
   userNudge?: string;
+}
+
+export interface PromoteSummaryInput {
+  parleySessionId: string;
+  topicId?: string;
 }
 
 interface StepParticipantDiagnostic {
@@ -387,7 +395,8 @@ export class ParleyService {
       ...(input.userNudge ? { userNudge: input.userNudge } : {}),
       responses
     };
-    state.latestSummary = this.buildLatestSummary(responses);
+    state.rollingSummary = this.buildRollingSummary(state.rollingSummary, responses, now);
+    state.latestSummary = state.rollingSummary.synopsis;
 
     if (state.turn >= state.maxTurns) {
       state.status = "finished";
@@ -450,7 +459,8 @@ export class ParleyService {
       finished: state.status === "finished",
       speakerOrder: order,
       responses,
-      latestSummary: state.latestSummary
+      latestSummary: state.latestSummary,
+      rollingSummary: state.rollingSummary
     };
   }
 
@@ -475,14 +485,111 @@ export class ParleyService {
     return this.buildFinishResponse(state);
   }
 
+  async promoteSummary(input: PromoteSummaryInput) {
+    const state = await this.getSessionState(input.parleySessionId);
+
+    if (state.status !== "finished") {
+      throw new ParleyError(
+        "invalid_argument",
+        "Session must be finished before promoting its summary into topic memory.",
+        {
+          parleySessionId: input.parleySessionId
+        }
+      );
+    }
+
+    const resolvedTopicId = input.topicId ?? state.topicId;
+    if (!resolvedTopicId) {
+      throw new ParleyError(
+        "invalid_argument",
+        "No topicId was provided and the session is not linked to a topic.",
+        {
+          parleySessionId: input.parleySessionId
+        }
+      );
+    }
+
+    const topic = await this.store.getTopic(state.workspaceId, resolvedTopicId);
+    if (!topic) {
+      throw new ParleyError("not_found", `Topic not found: ${resolvedTopicId}`, {
+        topicId: resolvedTopicId
+      });
+    }
+
+    const conclusion = this.buildConclusion(state);
+    const nextTopic: TopicRecord = {
+      ...topic,
+      linkedSessionIds: [...topic.linkedSessionIds],
+      openQuestions: [...topic.openQuestions],
+      actionItems: [...topic.actionItems],
+      statusHistory: [...topic.statusHistory]
+    };
+    const updatedFields: string[] = [];
+    let changed = false;
+
+    if (!nextTopic.linkedSessionIds.includes(state.sessionId)) {
+      nextTopic.linkedSessionIds.push(state.sessionId);
+      updatedFields.push("linkedSessionIds");
+      changed = true;
+    }
+
+    if (nextTopic.decisionSummary !== conclusion.summary) {
+      nextTopic.decisionSummary = conclusion.summary;
+      updatedFields.push("decisionSummary");
+      changed = true;
+    }
+
+    const canonicalSummary = this.buildCanonicalTopicSummary(state, conclusion);
+    if (nextTopic.canonicalSummary !== canonicalSummary) {
+      nextTopic.canonicalSummary = canonicalSummary;
+      updatedFields.push("canonicalSummary");
+      changed = true;
+    }
+
+    if (!this.areStringArraysEqual(nextTopic.openQuestions, conclusion.openQuestions)) {
+      nextTopic.openQuestions = [...conclusion.openQuestions];
+      updatedFields.push("openQuestions");
+      changed = true;
+    }
+
+    if (!this.areStringArraysEqual(nextTopic.actionItems, conclusion.actionItems)) {
+      nextTopic.actionItems = [...conclusion.actionItems];
+      updatedFields.push("actionItems");
+      changed = true;
+    }
+
+    if (nextTopic.status !== conclusion.recommendedDisposition) {
+      nextTopic.status = conclusion.recommendedDisposition;
+      nextTopic.statusHistory.push({
+        status: conclusion.recommendedDisposition,
+        changedAt: new Date().toISOString()
+      });
+      updatedFields.push("status");
+      changed = true;
+    }
+
+    if (changed) {
+      nextTopic.updatedAt = new Date().toISOString();
+      await this.store.updateTopic(nextTopic);
+    }
+
+    return {
+      topicId: nextTopic.topicId,
+      sourceSessionId: state.sessionId,
+      updatedFields,
+      topic: nextTopic
+    };
+  }
+
   private buildFinishResponse(state: ParleySessionState) {
+    const conclusion = this.buildConclusion(state);
+
     return {
       parleySessionId: state.sessionId,
       status: state.status,
       turn: state.turn,
-      summary:
-        state.latestSummary ??
-        "Parley session finished. Automatic participant synthesis will be added in the next implementation phase."
+      summary: conclusion.summary,
+      conclusion
     };
   }
 
@@ -554,11 +661,176 @@ export class ParleyService {
     };
   }
 
-  private buildLatestSummary(responses: Record<ParticipantKind, ParticipantResponse>): string {
-    return [
-      `Claude (${responses.claude.stance}): ${responses.claude.summary}`,
-      `Gemini (${responses.gemini.stance}): ${responses.gemini.summary}`
-    ].join(" | ");
+  private buildRollingSummary(
+    previousSummary: RollingSummary | undefined,
+    responses: Record<ParticipantKind, ParticipantResponse>,
+    updatedAt: string
+  ): RollingSummary {
+    const nextAgreements =
+      responses.claude.stance !== "disagree" && responses.gemini.stance !== "disagree"
+        ? this.mergeUniqueStrings(previousSummary?.agreements, [
+            responses.claude.summary,
+            responses.gemini.summary
+          ])
+        : previousSummary?.agreements ?? [];
+    const nextDisagreements =
+      responses.claude.stance === "disagree" || responses.gemini.stance === "disagree"
+        ? this.mergeUniqueStrings(previousSummary?.disagreements, [
+            ...(responses.claude.stance === "disagree" ? [responses.claude.summary] : []),
+            ...(responses.gemini.stance === "disagree" ? [responses.gemini.summary] : [])
+          ])
+        : previousSummary?.disagreements ?? [];
+    const nextOpenQuestions = this.mergeUniqueStrings(previousSummary?.openQuestions, [
+      ...responses.claude.questions,
+      ...responses.gemini.questions
+    ]);
+    const nextActionItems = this.mergeUniqueStrings(previousSummary?.actionItems, [
+      responses.claude.proposed_next_step,
+      responses.gemini.proposed_next_step
+    ]);
+
+    return {
+      synopsis: this.buildRollingSynopsis(
+        responses,
+        nextAgreements,
+        nextDisagreements,
+        nextOpenQuestions
+      ),
+      agreements: nextAgreements,
+      disagreements: nextDisagreements,
+      openQuestions: nextOpenQuestions,
+      actionItems: nextActionItems,
+      updatedAt
+    };
+  }
+
+  private buildRollingSynopsis(
+    responses: Record<ParticipantKind, ParticipantResponse>,
+    agreements: string[],
+    disagreements: string[],
+    openQuestions: string[]
+  ): string {
+    const parts: string[] = [];
+
+    if (agreements.length > 0) {
+      parts.push(`Agreements: ${agreements.join("; ")}`);
+    }
+
+    if (disagreements.length > 0) {
+      parts.push(`Disagreements: ${disagreements.join("; ")}`);
+    }
+
+    if (openQuestions.length > 0) {
+      parts.push(`Open questions: ${openQuestions.join("; ")}`);
+    }
+
+    parts.push(
+      `Latest turn: Claude (${responses.claude.stance}) ${responses.claude.summary} | Gemini (${responses.gemini.stance}) ${responses.gemini.summary}`
+    );
+
+    return parts.join(" ");
+  }
+
+  private buildConclusion(state: ParleySessionState): SessionConclusion {
+    const rollingSummary = state.rollingSummary;
+    const consensus = rollingSummary?.agreements ?? [];
+    const disagreements = rollingSummary?.disagreements ?? [];
+    const openQuestions = rollingSummary?.openQuestions ?? [];
+    const actionItems = rollingSummary?.actionItems ?? [];
+    const summary =
+      rollingSummary?.synopsis ??
+      state.latestSummary ??
+      (state.latestTurn
+        ? `Latest turn: Claude (${state.latestTurn.responses.claude.stance}) ${state.latestTurn.responses.claude.summary} | Gemini (${state.latestTurn.responses.gemini.stance}) ${state.latestTurn.responses.gemini.summary}`
+        : "Parley session finished before any participant turns were committed.");
+
+    return {
+      summary,
+      consensus,
+      disagreements,
+      openQuestions,
+      actionItems,
+      recommendedDisposition: this.resolveRecommendedDisposition(
+        consensus,
+        disagreements,
+        openQuestions,
+        actionItems,
+        state.turn
+      )
+    };
+  }
+
+  private resolveRecommendedDisposition(
+    consensus: string[],
+    disagreements: string[],
+    openQuestions: string[],
+    actionItems: string[],
+    turnCount: number
+  ): TopicRecord["status"] {
+    if (consensus.length > 0 && disagreements.length === 0 && openQuestions.length === 0) {
+      return "resolved";
+    }
+
+    if (turnCount > 0 || actionItems.length > 0 || consensus.length > 0 || disagreements.length > 0) {
+      return "in_progress";
+    }
+
+    return "open";
+  }
+
+  private buildCanonicalTopicSummary(
+    state: ParleySessionState,
+    conclusion: SessionConclusion
+  ): string {
+    const parts = [conclusion.summary];
+
+    if (conclusion.consensus.length > 0) {
+      parts.push(`Consensus: ${conclusion.consensus.join("; ")}`);
+    }
+
+    if (conclusion.disagreements.length > 0) {
+      parts.push(`Disagreements: ${conclusion.disagreements.join("; ")}`);
+    }
+
+    if (conclusion.openQuestions.length > 0) {
+      parts.push(`Open questions: ${conclusion.openQuestions.join("; ")}`);
+    }
+
+    if (conclusion.actionItems.length > 0) {
+      parts.push(`Action items: ${conclusion.actionItems.join("; ")}`);
+    }
+
+    if (state.topic && !parts[0]?.includes(state.topic)) {
+      parts.push(`Topic: ${state.topic}`);
+    }
+
+    return parts.join(" ");
+  }
+
+  private mergeUniqueStrings(existing: string[] | undefined, additions: string[]): string[] {
+    const merged = new Set<string>();
+
+    for (const value of existing ?? []) {
+      const normalized = value.trim();
+      if (normalized) {
+        merged.add(normalized);
+      }
+    }
+
+    for (const value of additions) {
+      const normalized = value.trim();
+      if (normalized) {
+        merged.add(normalized);
+      }
+    }
+
+    return [...merged];
+  }
+
+  private areStringArraysEqual(left: string[], right: string[]) {
+    return (
+      left.length === right.length && left.every((value, index) => value === right[index])
+    );
   }
 
   private markAuditCompleted(auditLog: OrchestratorAuditLogEntry[], completedAt: string) {

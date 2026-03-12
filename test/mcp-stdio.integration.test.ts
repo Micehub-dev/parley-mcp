@@ -14,6 +14,7 @@ test("stdio MCP flow supports start -> claim_lease -> step -> finish", async () 
   const binDir = await mkdtemp(path.join(os.tmpdir(), "parley-e2e-bin-"));
   const stderrLines: string[] = [];
   let sessionId: string | undefined;
+  let topicId: string | undefined;
   const participantScriptPath = await installFakeParticipants(binDir);
   const transport = new StdioClientTransport({
     command: getTsxCommandPath(),
@@ -41,12 +42,21 @@ test("stdio MCP flow supports start -> claim_lease -> step -> finish", async () 
   try {
     await client.connect(transport);
 
+    const createdTopic = await callJsonTool<{
+      topicId: string;
+    }>(client, "parley_create_topic", {
+      title: "MCP integration topic",
+      body: "Track promoted session memory"
+    });
+    topicId = createdTopic.topicId;
+
     const started = await callJsonTool<{
       parleySessionId: string;
       stateVersion: number;
       maxTurns: number;
     }>(client, "parley_start", {
       topic: "MCP integration",
+      topicId,
       maxTurns: 1,
       orchestrator: "codex",
       orchestratorRunId: "e2e-run-001"
@@ -82,6 +92,9 @@ test("stdio MCP flow supports start -> claim_lease -> step -> finish", async () 
         turn: number;
         status: string;
         latestSummary?: string;
+        rollingSummary?: {
+          synopsis: string;
+        };
         participants: {
           claude: {
             resumeId?: string;
@@ -98,9 +111,25 @@ test("stdio MCP flow supports start -> claim_lease -> step -> finish", async () 
       parleySessionId: string;
       status: string;
       summary: string;
+      conclusion: {
+        summary: string;
+        consensus: string[];
+      };
     }>(client, "parley_finish", {
       parleySessionId: sessionId,
       orchestratorRunId: "e2e-run-001"
+    });
+    const promoted = await callJsonTool<{
+      topicId: string;
+      sourceSessionId: string;
+      updatedFields: string[];
+      topic: {
+        status: string;
+        decisionSummary?: string;
+        canonicalSummary?: string;
+      };
+    }>(client, "parley_promote_summary", {
+      parleySessionId: sessionId
     });
 
     assert.equal(started.maxTurns, 1);
@@ -113,9 +142,16 @@ test("stdio MCP flow supports start -> claim_lease -> step -> finish", async () 
     assert.equal(state.state.status, "finished");
     assert.ok(state.state.participants.claude.resumeId);
     assert.ok(state.state.participants.gemini.resumeId);
+    assert.match(state.state.rollingSummary?.synopsis ?? "", /Agreements:/);
     assert.equal(finished.parleySessionId, sessionId);
     assert.equal(finished.status, "finished");
-    assert.match(finished.summary, /Claude/i);
+    assert.equal(finished.summary, finished.conclusion.summary);
+    assert.equal(finished.conclusion.consensus.length, 2);
+    assert.equal(promoted.topicId, topicId);
+    assert.equal(promoted.sourceSessionId, sessionId);
+    assert.ok(promoted.updatedFields.includes("decisionSummary"));
+    assert.equal(promoted.topic.status, "resolved");
+    assert.match(promoted.topic.decisionSummary ?? "", /Claude integration response/);
 
     const transcript = await readFile(
       path.join(repoRoot, ".multi-llm", "sessions", sessionId, "transcript.jsonl"),
@@ -132,6 +168,12 @@ test("stdio MCP flow supports start -> claim_lease -> step -> finish", async () 
     await transport.close().catch(() => undefined);
     if (sessionId) {
       await rm(path.join(repoRoot, ".multi-llm", "sessions", sessionId), {
+        recursive: true,
+        force: true
+      });
+    }
+    if (topicId) {
+      await rm(path.join(repoRoot, ".multi-llm", "workspaces", "default", "topics", topicId), {
         recursive: true,
         force: true
       });
@@ -361,8 +403,8 @@ async function installFakeParticipants(binDir: string): Promise<string> {
       '  stance: kind === "claude" ? "agree" : "refine",',
       '  summary: kind === "claude" ? "Claude integration response" : "Gemini integration response",',
       '  arguments: [`${kind} integration argument`],',
-      '  questions: [`${kind} integration question?`],',
-      '  proposed_next_step: `${kind} integration next step`',
+      '  questions: [],',
+      '  proposed_next_step: "Document the integration outcome"',
       "};",
       'const payload = kind === "claude"',
       "  ? { result: JSON.stringify(response), session_id: resumeId }",

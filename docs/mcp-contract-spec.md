@@ -1,25 +1,42 @@
 # MCP Contract Spec
 
+## Status
+
+This document tracks the implemented MCP contract for the current runtime.
+
+- Sprint 4 rolling summary, structured conclusion, and explicit topic promotion are now implemented.
+- Compatibility string fields remain in place so existing orchestrators can migrate additively.
+- The design rationale and frozen migration rules still live in `docs/decisions/ADR-0001-sprint-4-synthesis-contract.md`.
+
 ## Scope
+
+### Implemented Tools
 
 - `parley_start`
 - `parley_state`
 - `parley_claim_lease`
 - `parley_step`
 - `parley_finish`
-- topic/workspace query tools
+- `parley_promote_summary`
+- `parley_list_workspaces`
+- `parley_create_topic`
+- `parley_list_topics`
+- `parley_get_topic`
 
 ## Contract Rules
 
 ### State Ownership
 
 - The server owns session state.
+- Orchestrators must treat session state as authoritative rather than reconstructing state from local transcript assumptions.
 
 ### Concurrency
 
 - `leaseOwner`
 - `leaseExpiresAt`
 - `stateVersion`
+
+These three fields remain the product-critical concurrency surface.
 
 ### Tool Error Envelope
 
@@ -49,11 +66,76 @@
 - `participant_failure`
 - `storage_failure`
 
-Error messages should include the code in a machine-visible form such as `[lease_conflict] ...` so orchestrators can classify failures without fragile string parsing.
+Error messages include the code in a machine-visible form such as `[lease_conflict] ...` so orchestrators can classify failures without fragile string parsing.
+
+### Compatibility Rules
+
+- `state.latestSummary` remains contract-valid as a compatibility string.
+- `parley_step.latestSummary` remains contract-valid as a compatibility string.
+- `parley_finish.summary` remains contract-valid as a compatibility string.
+- `rollingSummary` is now the preferred machine-readable session synthesis field.
+- `conclusion` is now the preferred machine-readable finish artifact.
+
+## Shared Shapes
+
+### `ParticipantResponse`
+
+```json
+{
+  "stance": "agree | disagree | refine | undecided",
+  "summary": "short structured response",
+  "arguments": ["point 1"],
+  "questions": ["question 1"],
+  "proposed_next_step": "next action"
+}
+```
+
+### `RollingSummary`
+
+```json
+{
+  "synopsis": "short current state of the parley",
+  "agreements": ["agreed point"],
+  "disagreements": ["active disagreement"],
+  "openQuestions": ["open question"],
+  "actionItems": ["next action"],
+  "updatedAt": "ISO-8601 timestamp"
+}
+```
+
+Behavior notes:
+
+- `rollingSummary` is updated only after a successful committed `parley_step`.
+- `rollingSummary` summarizes the session so far, not only the latest turn.
+- The current synthesis is heuristic and intentionally transcript-light.
+- `latestSummary`, when present, is derived from `rollingSummary.synopsis`.
+
+### `SessionConclusion`
+
+```json
+{
+  "summary": "human-usable conclusion summary",
+  "consensus": ["agreed final point"],
+  "disagreements": ["remaining disagreement"],
+  "openQuestions": ["question still unresolved"],
+  "actionItems": ["recommended next step"],
+  "recommendedDisposition": "resolved | in_progress | open"
+}
+```
+
+Behavior notes:
+
+- `summary` is the finish-time closeout text.
+- `recommendedDisposition` is a topic-promotion hint that maps into the current topic status set.
+- Repeated `parley_finish` calls for the same unchanged session return the same logical conclusion.
 
 ## Tool Specs
 
 ### `parley_start`
+
+Status:
+
+- Implemented
 
 Input:
 
@@ -82,6 +164,10 @@ Possible errors:
 
 ### `parley_state`
 
+Status:
+
+- Implemented
+
 Input:
 
 - `parleySessionId`
@@ -91,12 +177,18 @@ Output:
 - `state`
 - `state.participants.{claude,gemini}.resumeId` is persisted when a participant runtime returns one
 - `state.latestTurn?` contains the most recently committed structured participant responses
+- `state.latestSummary?` is a compatibility string derived from the current rolling synthesis
+- `state.rollingSummary?` is the preferred machine-readable session synthesis field
 
 Possible errors:
 
 - `not_found`: session does not exist
 
 ### `parley_claim_lease`
+
+Status:
+
+- Implemented
 
 Input:
 
@@ -123,6 +215,10 @@ Behavior notes:
 
 ### `parley_step`
 
+Status:
+
+- Implemented
+
 Input:
 
 - `parleySessionId`
@@ -139,6 +235,7 @@ Output:
 - `speakerOrder`
 - `responses`
 - `latestSummary`
+- `rollingSummary`
 
 `responses` shape:
 
@@ -179,11 +276,16 @@ Behavior notes:
 - If a lease exists but has expired, `parley_step` returns `[lease_conflict]` until an orchestrator reclaims the lease through `parley_claim_lease`.
 - Participant responses are appended to `transcript.jsonl` and mirrored in `state.latestTurn` on success.
 - Resume IDs are persisted under `state.participants` when the participant runtime returns them.
+- `rollingSummary` is persisted only after a successful committed turn.
 - If session state save fails after participant execution, `parley_step` returns `[storage_failure]` with `details.stateCommitted = false`; the same version may be retried.
 - If transcript append fails after session state save, `parley_step` returns `[storage_failure]` with `details.stateCommitted = true`; orchestrators should call `parley_state` before retrying.
 - `storage_failure` also includes `details.diagnosticsPersisted` so operators know whether the diagnostic artifact exists.
 
 ### `parley_finish`
+
+Status:
+
+- Implemented
 
 Input:
 
@@ -196,15 +298,75 @@ Output:
 - `status`
 - `turn`
 - `summary`
+- `conclusion`
 
 Possible errors:
 
 - `not_found`: session does not exist
 
-Notes:
+Behavior notes:
 
 - `parley_finish` is idempotent for already finished sessions.
+- `summary` is a compatibility field derived from `conclusion.summary`.
+- `conclusion` is derived from the current persisted session synthesis, primarily `rollingSummary`.
+
+### `parley_promote_summary`
+
+Status:
+
+- Implemented
+
+Input:
+
+- `parleySessionId`
+- `topicId?`
+
+Output:
+
+- `topicId`
+- `sourceSessionId`
+- `updatedFields`
+- `topic`
+
+Possible errors:
+
+- `not_found`: target topic does not exist
+- `invalid_argument`: session is not finished, or neither an explicit `topicId` nor a linked session `topicId` is available
+
+Behavior notes:
+
+- If `topicId` is omitted, the tool uses the session's linked `topicId`.
+- Promotion is explicit and does not run automatically inside `parley_finish`.
+- Promotion uses the finish-time `conclusion` as the source artifact.
+- Promotion maps the session conclusion into existing topic fields:
+  - `conclusion.summary` -> `decisionSummary`
+  - synthesized topic summary -> `canonicalSummary`
+  - `conclusion.openQuestions` -> `openQuestions`
+  - `conclusion.actionItems` -> `actionItems`
+  - `conclusion.recommendedDisposition` -> `status`
+- `linkedSessionIds` continues to act as the lightweight provenance link.
+- Repeated promotion for an unchanged session/topic pair does not duplicate links or status-history entries.
+
+### Topic and Workspace Query Tools
+
+Status:
+
+- Implemented
+
+Implemented tools:
+
+- `parley_list_workspaces`
+- `parley_create_topic`
+- `parley_list_topics`
+- `parley_get_topic`
+
+Behavior notes:
+
+- Topic records are filesystem-backed and human-debuggable.
+- Topics may be linked to sessions through `topicId` at session creation time.
+- Promoted knowledge is stored directly on the existing `TopicRecord` shape rather than in a separate opaque index.
 
 ## Open Questions
 
-- Should future retry semantics live in the tool contract or remain the orchestrator's responsibility?
+- How long should compatibility string fields such as `latestSummary` and `summary` remain after downstream orchestrators adopt the structured fields?
+- Whether the first heuristic rolling summary is strong enough for future search and board ranking work without a second synthesis pass

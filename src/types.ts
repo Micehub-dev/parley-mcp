@@ -37,6 +37,24 @@ export interface ParticipantResponse {
   proposed_next_step: string;
 }
 
+export interface RollingSummary {
+  synopsis: string;
+  agreements: string[];
+  disagreements: string[];
+  openQuestions: string[];
+  actionItems: string[];
+  updatedAt: string;
+}
+
+export interface SessionConclusion {
+  summary: string;
+  consensus: string[];
+  disagreements: string[];
+  openQuestions: string[];
+  actionItems: string[];
+  recommendedDisposition: TopicRecord["status"];
+}
+
 export interface SessionTurnRecord {
   turn: number;
   speakerOrder: ParticipantKind[];
@@ -62,6 +80,7 @@ export interface ParleySessionState {
   updatedAt: string;
   createdAt: string;
   latestSummary?: string;
+  rollingSummary?: RollingSummary;
   latestTurn?: SessionTurnRecord;
   participants: Record<ParticipantKind, ParticipantState>;
   orchestratorAuditLog: OrchestratorAuditLogEntry[];
