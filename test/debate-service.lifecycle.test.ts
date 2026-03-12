@@ -225,6 +225,49 @@ test("claimLease and advanceStep enforce finished-session, lease, and version ru
   }
 });
 
+test("advanceStep appends orchestrator activity and finishes when maxTurns is reached", async () => {
+  const fixture = await createFixture();
+
+  try {
+    const result = await fixture.service.startSession({
+      workspaceId: "default",
+      workspaceRoot: fixture.rootDir,
+      topic: "Single turn debate",
+      maxTurns: 1,
+      orchestrator: "codex",
+      orchestratorRunId: "run-020"
+    });
+
+    const lease = await fixture.service.claimLease({
+      debateSessionId: result.debateSessionId,
+      orchestratorRunId: "run-020",
+      ttlSeconds: 300
+    });
+    const step = await fixture.service.advanceStep({
+      debateSessionId: result.debateSessionId,
+      expectedStateVersion: lease.stateVersion,
+      orchestratorRunId: "run-020",
+      userNudge: "Close the loop"
+    });
+    const state = await fixture.service.getSessionState(result.debateSessionId);
+    const transcriptPath = path.join(
+      fixture.rootDir,
+      ".multi-llm",
+      "sessions",
+      result.debateSessionId,
+      "transcript.jsonl"
+    );
+    const transcript = await readFile(transcriptPath, "utf8");
+
+    assert.equal(step.finished, true);
+    assert.equal(state.status, "finished");
+    assert.equal(state.turn, 1);
+    assert.match(transcript, /Step 1 requested\. Nudge: Close the loop/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 async function createFixture() {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "parley-sprint1-"));
   const store = new FileSystemStore(rootDir);

@@ -24,9 +24,9 @@
 
 ## Exit Criteria
 
-- [ ] lifecycle tests pass
-- [ ] contract spec 1.0 draft completed
-- [ ] risk register refreshed
+- [x] lifecycle tests pass
+- [x] contract spec 1.0 draft completed
+- [x] risk register refreshed
 
 ## Dependencies
 
@@ -89,6 +89,23 @@ Verification:
 
 ### Task 3. Sprint Exit Quality Bar
 
-- [ ] Add a stable test script and integrate tests into CI expectations
-- [ ] Add high-value lifecycle integration coverage for `debate_claim_lease` and `debate_step`
-- [ ] Sync contract and risk docs with the implemented behavior
+- [x] Add a stable test script and integrate tests into CI expectations
+- [x] Add high-value lifecycle integration coverage for `debate_claim_lease` and `debate_step`
+- [x] Sync contract and risk docs with the implemented behavior
+
+Review:
+
+- The sprint now has a single command-level verification path: `npm test`.
+- CI will catch lifecycle regressions instead of relying on local discipline alone.
+- `debate_step` remains intentionally placeholder logic, but its current termination and transcript behavior are now covered.
+
+Debt Watch:
+
+- There is still no dedicated MCP transport integration test exercising the stdio server end-to-end.
+- Topic and workspace tools are not yet covered by automated tests because Sprint 1 stayed focused on core session semantics.
+
+Verification:
+
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
