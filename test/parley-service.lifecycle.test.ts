@@ -6,8 +6,13 @@ import test from "node:test";
 
 import { ParleyError } from "../src/errors.js";
 import { ParleyService } from "../src/services/parley-service.js";
-import type { ParleyConfig } from "../src/types.js";
 import { FileSystemStore } from "../src/storage/fs-store.js";
+import type { ParleyConfig, ParticipantKind, ParticipantResponse } from "../src/types.js";
+import type {
+  ParticipantAdapterInput,
+  ParticipantAdapterRegistry,
+  ParticipantExecutionResult
+} from "../src/participants/types.js";
 
 const config: ParleyConfig = {
   parley: {
@@ -225,8 +230,23 @@ test("claimLease and advanceStep enforce finished-session, lease, and version ru
   }
 });
 
-test("advanceStep appends orchestrator activity and finishes when maxTurns is reached", async () => {
-  const fixture = await createFixture();
+test("advanceStep executes both participants, persists resume IDs, and finishes at maxTurns", async () => {
+  const mock = createMockAdapters({
+    gemini: async (input) => {
+      assert.equal(input.priorResponses.length, 0);
+      return successResult("gemini", buildResponse("refine", "Gemini opens with a refinement."), {
+        resumeId: "gemini-session-1"
+      });
+    },
+    claude: async (input) => {
+      assert.equal(input.priorResponses.length, 1);
+      assert.equal(input.priorResponses[0]?.participant, "gemini");
+      return successResult("claude", buildResponse("agree", "Claude responds with agreement."), {
+        resumeId: "claude-session-1"
+      });
+    }
+  });
+  const fixture = await createFixture(mock.adapters);
 
   try {
     const result = await fixture.service.startSession({
@@ -247,6 +267,7 @@ test("advanceStep appends orchestrator activity and finishes when maxTurns is re
       parleySessionId: result.parleySessionId,
       expectedStateVersion: lease.stateVersion,
       orchestratorRunId: "run-020",
+      speakerOrder: ["gemini", "claude"],
       userNudge: "Close the loop"
     });
     const state = await fixture.service.getSessionState(result.parleySessionId);
@@ -259,26 +280,240 @@ test("advanceStep appends orchestrator activity and finishes when maxTurns is re
     );
     const transcript = await readFile(transcriptPath, "utf8");
 
+    assert.deepEqual(mock.calls, ["gemini", "claude"]);
     assert.equal(step.finished, true);
+    assert.deepEqual(step.speakerOrder, ["gemini", "claude"]);
+    assert.equal(step.responses.claude.summary, "Claude responds with agreement.");
+    assert.equal(step.responses.gemini.summary, "Gemini opens with a refinement.");
     assert.equal(state.status, "finished");
     assert.equal(state.turn, 1);
+    assert.equal(state.participants.claude.resumeId, "claude-session-1");
+    assert.equal(state.participants.gemini.resumeId, "gemini-session-1");
+    assert.equal(state.latestTurn?.responses.claude.stance, "agree");
+    assert.equal(state.latestTurn?.speakerOrder[0], "gemini");
     assert.match(transcript, /Step 1 requested\. Nudge: Close the loop/);
+    assert.match(transcript, /Claude responds with agreement\./);
+    assert.match(transcript, /Gemini opens with a refinement\./);
   } finally {
     await fixture.cleanup();
   }
 });
 
-async function createFixture() {
-  const rootDir = await mkdtemp(path.join(os.tmpdir(), "parley-sprint1-"));
+test("advanceStep rejects malformed participant output before mutating session state", async () => {
+  const fixture = await createFixture(
+    createMockAdapters({
+      claude: async () => successResult("claude", buildResponse("agree", "Claude is valid.")),
+      gemini: async () =>
+        ({
+          ok: true,
+          participant: "gemini",
+          output: {
+            stance: "refine",
+            summary: "Gemini forgot required fields."
+          } as unknown as ParticipantResponse,
+          raw: emptyRaw("gemini")
+        }) satisfies ParticipantExecutionResult
+    }).adapters
+  );
+
+  try {
+    const result = await fixture.service.startSession({
+      workspaceId: "default",
+      workspaceRoot: fixture.rootDir,
+      topic: "Malformed output",
+      orchestrator: "codex",
+      orchestratorRunId: "run-030"
+    });
+
+    const lease = await fixture.service.claimLease({
+      parleySessionId: result.parleySessionId,
+      orchestratorRunId: "run-030",
+      ttlSeconds: 300
+    });
+
+    await assert.rejects(
+      () =>
+        fixture.service.advanceStep({
+          parleySessionId: result.parleySessionId,
+          expectedStateVersion: lease.stateVersion,
+          orchestratorRunId: "run-030"
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ParleyError);
+        assert.equal(error.code, "participant_failure");
+        return true;
+      }
+    );
+
+    const state = await fixture.service.getSessionState(result.parleySessionId);
+    const transcriptPath = path.join(
+      fixture.rootDir,
+      ".multi-llm",
+      "sessions",
+      result.parleySessionId,
+      "transcript.jsonl"
+    );
+    const transcript = await readFile(transcriptPath, "utf8");
+
+    assert.equal(state.turn, 0);
+    assert.equal(state.stateVersion, lease.stateVersion);
+    assert.equal(state.latestTurn, undefined);
+    assert.doesNotMatch(transcript, /Step 1 requested/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("advanceStep propagates participant process failures without partial commit", async () => {
+  const fixture = await createFixture(
+    createMockAdapters({
+      claude: async () =>
+        failureResult("claude", "process_error", "Claude CLI exited with code 17.", {
+          exitCode: 17
+        }),
+      gemini: async () => successResult("gemini", buildResponse("refine", "Gemini would succeed."))
+    }).adapters
+  );
+
+  try {
+    const result = await fixture.service.startSession({
+      workspaceId: "default",
+      workspaceRoot: fixture.rootDir,
+      topic: "Subprocess failure",
+      orchestrator: "codex",
+      orchestratorRunId: "run-040"
+    });
+
+    const lease = await fixture.service.claimLease({
+      parleySessionId: result.parleySessionId,
+      orchestratorRunId: "run-040",
+      ttlSeconds: 300
+    });
+
+    await assert.rejects(
+      () =>
+        fixture.service.advanceStep({
+          parleySessionId: result.parleySessionId,
+          expectedStateVersion: lease.stateVersion,
+          orchestratorRunId: "run-040"
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ParleyError);
+        assert.equal(error.code, "participant_failure");
+        assert.match(error.message, /claude/i);
+        return true;
+      }
+    );
+
+    const state = await fixture.service.getSessionState(result.parleySessionId);
+    assert.equal(state.turn, 0);
+    assert.equal(state.stateVersion, lease.stateVersion);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+async function createFixture(participantAdapters?: ParticipantAdapterRegistry) {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), "parley-sprint2-"));
   const store = new FileSystemStore(rootDir);
   await store.ensureBaseLayout();
 
   return {
     rootDir,
     store,
-    service: new ParleyService(store, config),
+    service: new ParleyService(store, config, participantAdapters ?? createMockAdapters().adapters),
     cleanup: async () => {
       await rm(rootDir, { recursive: true, force: true });
     }
+  };
+}
+
+function buildResponse(stance: ParticipantResponse["stance"], summary: string): ParticipantResponse {
+  return {
+    stance,
+    summary,
+    arguments: [`${summary} Argument.`],
+    questions: [`${summary} Question?`],
+    proposed_next_step: `${summary} Next step.`
+  };
+}
+
+function createMockAdapters(
+  overrides: Partial<
+    Record<
+      ParticipantKind,
+      (input: ParticipantAdapterInput) => Promise<ParticipantExecutionResult> | ParticipantExecutionResult
+    >
+  > = {}
+) {
+  const calls: ParticipantKind[] = [];
+  const adapters = {
+    claude: {
+      kind: "claude" as const,
+      run: async (input: ParticipantAdapterInput) => {
+        calls.push("claude");
+        const handler = overrides.claude;
+        return handler
+          ? handler(input)
+          : successResult("claude", buildResponse("agree", "Claude default response."));
+      }
+    },
+    gemini: {
+      kind: "gemini" as const,
+      run: async (input: ParticipantAdapterInput) => {
+        calls.push("gemini");
+        const handler = overrides.gemini;
+        return handler
+          ? handler(input)
+          : successResult("gemini", buildResponse("refine", "Gemini default response."));
+      }
+    }
+  } satisfies ParticipantAdapterRegistry;
+
+  return {
+    calls,
+    adapters
+  };
+}
+
+function successResult(
+  participant: ParticipantKind,
+  output: ParticipantResponse,
+  options?: { resumeId?: string }
+): ParticipantExecutionResult {
+  return {
+    ok: true,
+    participant,
+    output,
+    raw: emptyRaw(participant),
+    ...(options?.resumeId ? { resumeId: options.resumeId } : {})
+  };
+}
+
+function failureResult(
+  participant: ParticipantKind,
+  reason: "invalid_output" | "process_error",
+  message: string,
+  options?: { exitCode?: number }
+): ParticipantExecutionResult {
+  return {
+    ok: false,
+    participant,
+    reason,
+    message,
+    raw: {
+      ...emptyRaw(participant),
+      ...(typeof options?.exitCode === "number" ? { exitCode: options.exitCode } : {})
+    }
+  };
+}
+
+function emptyRaw(participant: ParticipantKind) {
+  return {
+    command: participant,
+    args: [],
+    stdout: "",
+    stderr: "",
+    exitCode: 0
   };
 }

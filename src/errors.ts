@@ -2,6 +2,7 @@ export type ParleyErrorCode =
   | "invalid_argument"
   | "lease_conflict"
   | "not_found"
+  | "participant_failure"
   | "session_finished"
   | "storage_failure"
   | "version_mismatch";

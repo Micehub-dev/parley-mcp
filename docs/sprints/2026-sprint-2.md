@@ -17,14 +17,14 @@
 
 ## Committed Scope
 
-- [ ] Add a participant adapter boundary for `claude` and `gemini`
-- [ ] Execute participant subprocesses from `parley_step`
-- [ ] Capture normalized structured participant output
-- [ ] Validate participant output against a shared schema
-- [ ] Persist participant responses into transcript and session state
-- [ ] Introduce `participant_failure` handling in the domain and MCP layers
-- [ ] Define resume ID persistence semantics for each participant
-- [ ] Add service-level tests for successful step execution and participant failure cases
+- [x] Add a participant adapter boundary for `claude` and `gemini`
+- [x] Execute participant subprocesses from `parley_step`
+- [x] Capture normalized structured participant output
+- [x] Validate participant output against a shared schema
+- [x] Persist participant responses into transcript and session state
+- [x] Introduce `participant_failure` handling in the domain and MCP layers
+- [x] Define resume ID persistence semantics for each participant
+- [x] Add service-level tests for successful step execution and participant failure cases
 
 ## Stretch Scope
 
@@ -41,11 +41,11 @@
 
 ## Exit Criteria
 
-- [ ] `parley_step` invokes real adapter code instead of placeholder-only orchestration logging
-- [ ] Both participants return a normalized response object or a structured `participant_failure`
-- [ ] Resume identifiers are persisted when returned by the participant runtime
-- [ ] Contract docs reflect the exact `parley_step` response and error behavior
-- [ ] `npm test`, `npm run typecheck`, and `npm run build` are green
+- [x] `parley_step` invokes real adapter code instead of placeholder-only orchestration logging
+- [x] Both participants return a normalized response object or a structured `participant_failure`
+- [x] Resume identifiers are persisted when returned by the participant runtime
+- [x] Contract docs reflect the exact `parley_step` response and error behavior
+- [x] `npm test`, `npm run typecheck`, and `npm run build` are green
 
 ## Dependencies
 
@@ -62,57 +62,121 @@
 
 ### Task 1. Participant Adapter Contract
 
-- [ ] Define a small adapter interface with input, raw execution result, normalized output, and failure shape
-- [ ] Keep adapter-specific flags and command construction outside `ParleyService`
-- [ ] Ensure the contract is orchestrator-agnostic and does not leak CLI-specific semantics into session state
+- [x] Define a small adapter interface with input, raw execution result, normalized output, and failure shape
+- [x] Keep adapter-specific flags and command construction outside `ParleyService`
+- [x] Ensure the contract is orchestrator-agnostic and does not leak CLI-specific semantics into session state
 
 Review focus:
 
 - The main architectural risk is coupling session orchestration to CLI invocation details too early.
 - A narrow adapter boundary keeps later participants and policy layers possible.
 
+Review:
+
+- `ParleyService` now depends on a small adapter registry instead of embedding CLI argument construction.
+- Raw execution details stay inside the adapter/runtime layer, while persisted session state keeps only normalized response data and resume IDs.
+- The shared participant schema is frozen in one place so later moderation work can build on a stable contract.
+
+Debt Watch:
+
+- Gemini tool isolation still relies on prompt discipline because this sprint intentionally did not add a policy file workflow.
+- Command names remain fixed to `claude` and `gemini`; configurable binary paths can wait until there is a stronger operator requirement.
+
+Verification:
+
+- `npm test`
+- `npm run typecheck`
+- `npm run lint`
+
 ### Task 2. `parley_step` Runtime Execution
 
-- [ ] Replace placeholder note-only behavior with adapter invocation
-- [ ] Respect `speakerOrder` while preserving the current lease and `stateVersion` invariants
-- [ ] Append participant messages to `transcript.jsonl`
-- [ ] Persist participant resume IDs when available
-- [ ] Update finish behavior when `maxTurns` is reached after a real step
+- [x] Replace placeholder note-only behavior with adapter invocation
+- [x] Respect `speakerOrder` while preserving the current lease and `stateVersion` invariants
+- [x] Append participant messages to `transcript.jsonl`
+- [x] Persist participant resume IDs when available
+- [x] Update finish behavior when `maxTurns` is reached after a real step
 
 Review focus:
 
 - This is the first sprint where `parley_step` becomes product-defining behavior instead of scaffolding.
 - Partial failure handling must be explicit: we need a clear rule for what is persisted if one participant succeeds and the other fails.
 
+Review:
+
+- `parley_step` now executes both participants in order, validates both outputs, and only then commits the turn.
+- Lease ownership and `stateVersion` checks still guard the write path before any state mutation is persisted.
+- `latestTurn` gives the session state a structured last-turn snapshot without leaking adapter-specific transport details.
+
+Debt Watch:
+
+- The service currently fails the whole step when one participant fails after the other has already run; repair or replay support is still a later concern.
+- Transcript entries store normalized JSON as text for simplicity; richer per-turn diagnostic files remain stretch scope.
+
+Verification:
+
+- `npm test`
+- `npm run typecheck`
+- `npm run lint`
+
 ### Task 3. Structured Output and Error Semantics
 
-- [ ] Add a shared participant response schema
-- [ ] Validate adapter output before mutating final session state
-- [ ] Add `participant_failure` to the domain error taxonomy
-- [ ] Return machine-visible error codes consistently from the MCP layer
+- [x] Add a shared participant response schema
+- [x] Validate adapter output before mutating final session state
+- [x] Add `participant_failure` to the domain error taxonomy
+- [x] Return machine-visible error codes consistently from the MCP layer
 
 Review focus:
 
 - Contract drift is likely unless the schema and error rules are documented together with the code.
 - Sprint 2 should end with a contract that future moderation and summary work can safely build on.
 
+Review:
+
+- Adapter parsing and service-layer validation both enforce the same shared schema, which closes off a high-value malformed-output failure mode.
+- `participant_failure` is now part of the domain error taxonomy, and MCP-visible errors still carry machine-readable `[code]` prefixes.
+- The contract now distinguishes successful structured responses from process or validation failures without changing lease/version semantics.
+
+Debt Watch:
+
+- MCP transport errors are still surfaced through message strings instead of a richer structured error envelope.
+- The first-pass summary is a simple stitched string from both participants; moderation-quality synthesis stays out of Sprint 2.
+
+Verification:
+
+- `npm test`
+- `npm run typecheck`
+- `npm run lint`
+
 ### Task 4. Test and Verification Coverage
 
-- [ ] Add unit or service tests for successful two-participant execution
-- [ ] Add tests for malformed participant output
-- [ ] Add tests for subprocess failure propagation
-- [ ] Add tests for resume ID persistence
+- [x] Add unit or service tests for successful two-participant execution
+- [x] Add tests for malformed participant output
+- [x] Add tests for subprocess failure propagation
+- [x] Add tests for resume ID persistence
 
 Debt watch:
 
 - Workspace/topic tools still have lighter test coverage than session lifecycle paths.
 - Full MCP transport integration can remain stretch scope if the adapter contract lands cleanly.
 
-## Open Questions To Resolve During Sprint
+Review:
 
-- Should `parley_step` fail the whole step when one participant output is invalid, or persist partial success with repair metadata?
-- Should stdout/stderr live in transcript metadata, a separate diagnostic file, or only in transient logs?
-- Is the first adapter implementation allowed to shell out directly, or do we want a tiny execution wrapper from day one?
+- Service tests now cover the happy path, malformed structured output, subprocess-style failures, and resume ID persistence.
+- Adapter tests exercise command construction and CLI payload parsing without depending on installed external CLIs.
+- Regression coverage now targets the highest-value Sprint 2 invariants instead of the old placeholder behavior.
+
+Verification:
+
+- `npm test`
+- `npm run typecheck`
+- `npm run lint`
+- `npm run build`
+
+## Open Questions Resolved In This Implementation
+
+- `parley_step` now fails the whole step when any participant output is invalid or the process fails; no partial turn commit occurs.
+- Stdout and stderr remain runtime/debug-only data for now and are not persisted into session state.
+- The first adapter implementation shells out directly behind a small `CommandExecutor` boundary so later wrappers can replace it surgically.
 
 ## Recommended Execution Order
 
