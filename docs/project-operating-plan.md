@@ -30,7 +30,7 @@ As of 2026-03-13, the repository is beyond the bootstrap, placeholder, and runti
 - Diagnostic inspection now returns redacted records by default with explicit full-detail opt-in.
 - Automated coverage exists at the service, adapter, and stdio MCP integration layers.
 
-Sprint 6 hardening is now functionally complete ahead of the original calendar window. Sprint 7 closes the next immediate gap by hardening diagnostics access rules before packaging direction is revisited.
+Sprint 6 hardening is now functionally complete ahead of the original calendar window. Sprint 7 closes the immediate diagnostics access gap, and Sprint 8 is planned as a production-readiness hardening pass before packaging direction is revisited.
 
 ## 2. Working Source Of Truth
 
@@ -304,6 +304,25 @@ Delivered scope:
 - explicit `detailLevel: "full"` opt-in keeps local operator debugging viable
 - contract, sprint, README, risk, and matrix docs now reflect the tighter diagnostics boundary
 
+### Sprint 8: Production Readiness Hardening
+
+Window: 2026-03-27 to 2026-04-09
+
+Goal:
+
+- harden subprocess execution, storage durability, real-environment verification, and release ownership before any broader distribution work
+
+Status:
+
+- Planned
+
+Planned scope:
+
+- subprocess guardrails for participant runtime execution
+- stronger durability and corruption visibility for filesystem-backed artifacts
+- real CLI and broader OS verification beyond the current fixture-heavy confidence bar
+- release ownership, preflight, rollback, and runbook hardening
+
 ## 7. Epic View
 
 ### Epic 1. Core Orchestration
@@ -377,14 +396,14 @@ Done when:
 
 ### Work That Should Happen Now
 
-- keep the Sprint 7 diagnostics redaction boundary stable in CI
-- revisit packaging direction only as a thin-wrapper follow-up after diagnostics hardening proves stable
-- keep redaction-aware operator ergonomics additive and tool-first
+- keep the Sprint 7 diagnostics redaction boundary stable in CI while Sprint 8 production-readiness work lands
+- harden participant subprocess guardrails and filesystem durability before broadening distribution
+- define a clearer real-CLI and OS support position plus release ownership/runbook expectations
 
 ### Work That Should Happen Soon After
 
-- broader OS and transport validation beyond the current Windows-first matrix
-- packaging direction once the Sprint 7 hardening surface proves stable
+- packaging direction once Sprint 8 production-readiness hardening proves stable
+- broader transport validation if it rises above the current stdio-first release posture
 - stronger access policy options if diagnostics move beyond local operator use
 
 ### Work That Should Happen Later
@@ -431,13 +450,14 @@ Mitigation:
 
 ### This Week
 
-- keep the new diagnostics redaction defaults and explicit full-detail path green in CI
+- keep the diagnostics redaction defaults and explicit full-detail path green in CI
+- define Sprint 8 implementation scope around subprocess guardrails, storage durability, real-CLI verification, and release runbooks
 - review whether any helper surface still leaks raw subprocess detail unexpectedly
-- revisit packaging direction only after the diagnostics boundary stays stable
 
 ### Next Implementation Priority
 
-1. Keep the new diagnostics redaction and full-detail opt-in paths green and expand only if new drift appears.
-2. Revisit packaging direction only after the Sprint 7 hardening work stays stable.
-3. Expand OS and transport coverage later if those risks rise above packaging-direction work.
-4. Consider stronger access policy options only if diagnostics move beyond local operator use.
+1. Keep the diagnostics redaction and full-detail opt-in paths green while Sprint 8 runtime hardening begins.
+2. Harden participant subprocess controls and filesystem durability before claiming broader production readiness.
+3. Expand real-CLI and OS verification enough to support a clear support statement and release runbook.
+4. Revisit packaging direction only after the Sprint 8 hardening bar stays stable.
+5. Consider stronger access policy options only if diagnostics move beyond local operator use.
