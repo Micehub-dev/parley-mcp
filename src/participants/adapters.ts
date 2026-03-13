@@ -232,9 +232,11 @@ export function buildParticipantPrompt(
     "- Make the summary topic-specific instead of describing your own process or readiness.",
     "- Keep arguments and questions as JSON arrays. Use [] when empty.",
     "- If context is limited, ask one concrete topic question instead of giving a generic fallback.",
+    "- Provide at least one useful argument or one concrete question when the topic gives enough context.",
     "- Avoid generic filler such as 'I am ready to participate' or 'Here is a structured response'.",
     "- Do not ask for the objective, task, or workspace context. The topic above is already the task.",
     "- Do not say you are ready to participate; contribute one concrete point about the topic instead.",
+    "- Do not use a generic next step; name a specific document, check, decision, or follow-up action.",
     "- Always provide a short proposed_next_step string that is specific to the topic or current disagreement.",
     "",
     "Session context:",
@@ -294,13 +296,11 @@ export function assessParticipantResponseUsefulness(
   }
 
   const classification =
-    reasons.includes("generic_summary") &&
-    reasons.includes("missing_topic_terms") &&
-    reasons.includes("no_supporting_detail")
+    reasons.includes("generic_summary") ||
+    (reasons.includes("default_next_step") && reasons.includes("no_supporting_detail")) ||
+    (reasons.includes("missing_topic_terms") && reasons.includes("no_supporting_detail"))
       ? "generic_fallback"
-      : reasons.length === 4
-        ? "generic_fallback"
-        : "material";
+      : "material";
 
   return {
     classification,
@@ -331,6 +331,11 @@ function normalizeGeminiParticipantResponse(value: unknown): ParticipantResponse
       return structuredTextResponse;
     }
 
+    const plainTextResponse = parseGeminiPlainTextResponse(parsedValue);
+    if (plainTextResponse) {
+      return plainTextResponse;
+    }
+
     const summary = normalizeGeminiSummaryText(parsedValue);
     if (!summary) {
       throw new Error("Gemini returned an empty response.");
@@ -356,6 +361,33 @@ function normalizeGeminiParticipantResponse(value: unknown): ParticipantResponse
     : null;
   if (structuredTextResponse) {
     return structuredTextResponse;
+  }
+
+  const plainTextResponse = structuredTextCandidate
+    ? parseGeminiPlainTextResponse(structuredTextCandidate)
+    : null;
+  if (plainTextResponse) {
+    const argumentsFromRecord = normalizeStringArray(
+      record.arguments ?? record.argumentList ?? record.points ?? record.reasons
+    );
+    const questionsFromRecord = normalizeStringArray(
+      record.questions ?? record.followUpQuestions ?? record.follow_up_questions
+    );
+    const nextStepFromRecord = getFirstText(record, [
+      "proposed_next_step",
+      "proposedNextStep",
+      "next_step",
+      "nextStep",
+      "recommended_next_step"
+    ]);
+
+    return {
+      stance: normalizeParticipantStance(getFirstText(record, ["stance", "position", "opinion"])),
+      summary: plainTextResponse.summary,
+      arguments: argumentsFromRecord.length > 0 ? argumentsFromRecord : plainTextResponse.arguments,
+      questions: questionsFromRecord.length > 0 ? questionsFromRecord : plainTextResponse.questions,
+      proposed_next_step: nextStepFromRecord ?? plainTextResponse.proposed_next_step
+    };
   }
 
   const summary = normalizeGeminiSummaryText(
@@ -554,6 +586,54 @@ function parseGeminiLabeledTextResponse(value: string): ParticipantResponse | nu
   };
 }
 
+function parseGeminiPlainTextResponse(value: string): ParticipantResponse | null {
+  const normalizedText = normalizeGeminiSummaryText(value);
+  if (!normalizedText) {
+    return null;
+  }
+
+  const sentences = splitGeminiSentences(normalizedText);
+  if (sentences.length === 0) {
+    return null;
+  }
+
+  const questions = sentences.filter((sentence) => sentence.endsWith("?"));
+  const nonQuestionSentences = sentences.filter((sentence) => !sentence.endsWith("?"));
+  const explicitNextStepIndex = nonQuestionSentences.findIndex((sentence) =>
+    isExplicitNextStepSentence(sentence)
+  );
+  const inferredNextStepIndex =
+    explicitNextStepIndex >= 0
+      ? explicitNextStepIndex
+      : nonQuestionSentences.length > 1
+        ? nonQuestionSentences.findIndex(
+            (sentence, index) => index > 0 && isLikelyActionSentence(sentence)
+          )
+        : -1;
+
+  const nextStepSource =
+    inferredNextStepIndex >= 0 ? nonQuestionSentences[inferredNextStepIndex] : undefined;
+  const detailSentences = nonQuestionSentences.filter(
+    (_sentence, index) => index !== inferredNextStepIndex
+  );
+  const summary = detailSentences[0] ?? nonQuestionSentences[0] ?? questions[0];
+
+  if (!summary) {
+    return null;
+  }
+
+  return {
+    stance: "undecided",
+    summary,
+    arguments: detailSentences.slice(detailSentences[0] === summary ? 1 : 0),
+    questions,
+    proposed_next_step:
+      nextStepSource !== undefined
+        ? stripNextStepLeadIn(nextStepSource)
+        : "Continue the parley with the next participant response."
+  };
+}
+
 function mapGeminiTextSection(value: string):
   | "stance"
   | "summary"
@@ -593,6 +673,35 @@ function mapGeminiTextSection(value: string):
   }
 
   return null;
+}
+
+function splitGeminiSentences(value: string): string[] {
+  const matches = value.match(/[^.!?\n]+[.!?]?/gu);
+  return (matches ?? [])
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0);
+}
+
+function isExplicitNextStepSentence(value: string): boolean {
+  return /^(?:next step|recommended next step|action item|follow[- ]?up):/iu.test(value);
+}
+
+function isLikelyActionSentence(value: string): boolean {
+  return (
+    /^(?:a )?next step is to\b/iu.test(value) ||
+    /^(?:recommend|recommended|recommendation):/iu.test(value) ||
+    /^(?:run|update|document|record|add|keep|rerun|review|verify|investigate|tighten|capture|write|generate|refresh|use|treat|prefer)\b/iu.test(
+      value
+    )
+  );
+}
+
+function stripNextStepLeadIn(value: string): string {
+  return value
+    .replace(/^(?:next step|recommended next step|action item|follow[- ]?up):\s*/iu, "")
+    .replace(/^(?:a )?next step is to\s+/iu, "")
+    .replace(/^(?:recommend|recommended|recommendation):\s*/iu, "")
+    .trim();
 }
 
 function getFirstText(
