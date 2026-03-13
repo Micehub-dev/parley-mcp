@@ -32,10 +32,10 @@
 
 | Verification Type | Participants | OS | Transport | Workflow | Latest Result |
 | --- | --- | --- | --- | --- | --- |
-| manual smoke | Claude + Gemini CLIs | Windows | stdio / in-process service | `npm run smoke:real` | Observed local Gemini wrapper caveat on 2026-03-13; see `docs/real-cli-smoke.md` |
+| manual smoke | Claude + Gemini CLIs | Windows | stdio / in-process service | `npm run smoke:real` | Passed on 2026-03-13 using `claude.exe` plus the npm-installed `gemini.cmd` shim; see `docs/real-cli-smoke.md` |
 
 ## Notes
 
 - Fixture-backed automation remains the primary CI confidence surface.
 - Real-CLI smoke is intentionally lightweight and release-oriented rather than a large manual QA program.
-- Windows operators may need launcher overrides when the Gemini CLI is installed only as `gemini.ps1`.
+- Windows operators should prefer the npm-installed `gemini.cmd` shim when it is available; use launcher overrides only when `gemini.ps1` is the only working entrypoint.

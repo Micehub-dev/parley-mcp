@@ -18,6 +18,11 @@ $env:PARLEY_GEMINI_COMMAND="powershell.exe"
 $env:PARLEY_GEMINI_ARGS_JSON='["-NoProfile","-ExecutionPolicy","Bypass","-File","C:\\Users\\<user>\\AppData\\Roaming\\npm\\gemini.ps1"]'
 ```
 
+Windows note:
+
+- Parley now prefers `%APPDATA%\\npm\\gemini.cmd` automatically when that shim is present.
+- Use the PowerShell override only when the npm `.cmd` shim is unavailable and `gemini.ps1` is the only working launcher.
+
 Optional artifact retention:
 
 ```powershell
@@ -42,5 +47,6 @@ Use these only when the release runbook explicitly calls for a different product
 Observed on 2026-03-13 in a Windows local environment:
 
 - `claude.exe` resolved directly from `PATH`
-- `gemini.ps1` required an explicit PowerShell launcher override for `spawn`
-- the real smoke still produced `participant_failure` for Gemini with exit code `1`, so the current support statement remains "Windows stdio support with documented local CLI caveats", not a blanket success claim across all operator setups
+- Parley resolved Gemini through the npm-installed `gemini.cmd` shim under `%APPDATA%\\npm`
+- `npm run smoke:real` completed successfully with `ok: true`, one committed turn, and a finish-time `conclusion`
+- Gemini still may return weaker or less structured content than Claude, but the adapter now normalizes common plain-text and non-enum-shape responses into the shared participant contract

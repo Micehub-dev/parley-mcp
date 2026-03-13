@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import { createParticipantAdapters } from "../src/participants/adapters.js";
@@ -60,7 +63,19 @@ test("gemini adapter parses response payloads and reuses persisted resume IDs", 
 
   const result = await adapters.gemini.run(input);
 
-  assert.equal(executor.calls[0]?.command, "gemini");
+  const expectedGeminiCommand =
+    process.platform === "win32"
+      ? path.join(process.env.APPDATA ?? "", "npm", "gemini.cmd")
+      : "gemini";
+  assert.equal(executor.calls[0]?.command, process.platform === "win32" ? (process.env.ComSpec ?? "cmd.exe") : expectedGeminiCommand);
+  if (process.platform === "win32") {
+    assert.deepEqual(executor.calls[0]?.args.slice(0, 4), [
+      "/d",
+      "/s",
+      "/c",
+      expectedGeminiCommand
+    ]);
+  }
   assert.ok(executor.calls[0]?.args.includes("--resume"));
   assert.ok(executor.calls[0]?.args.includes("gemini-session-existing"));
   assert.equal(result.ok, true);
@@ -73,7 +88,7 @@ test("gemini adapter parses response payloads and reuses persisted resume IDs", 
 test("adapter returns participant_failure-ready invalid_output results for malformed payloads", async () => {
   const executor = new FakeCommandExecutor({
     stdout: JSON.stringify({
-      response: "{\"summary\":\"missing fields\"}"
+      response: "{\"arguments\":[\"missing summary\"]}"
     })
   });
   const adapters = createParticipantAdapters(executor);
@@ -83,7 +98,49 @@ test("adapter returns participant_failure-ready invalid_output results for malfo
   assert.equal(result.ok, false);
   if (!result.ok) {
     assert.equal(result.reason, "invalid_output");
-    assert.match(result.message, /required/i);
+    assert.match(result.message, /usable summary|required/i);
+  }
+});
+
+test("gemini adapter normalizes plain-text responses into the shared participant shape", async () => {
+  const executor = new FakeCommandExecutor({
+    stdout: JSON.stringify({
+      response: "I am ready to participate in the Parley multi-LLM session."
+    })
+  });
+  const adapters = createParticipantAdapters(executor);
+
+  const result = await adapters.gemini.run(buildAdapterInput());
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.output.stance, "undecided");
+    assert.match(result.output.summary, /ready to participate/i);
+    assert.equal(result.output.arguments.length, 0);
+    assert.equal(result.output.questions.length, 0);
+  }
+});
+
+test("gemini adapter coerces non-enum stance values from JSON payloads", async () => {
+  const executor = new FakeCommandExecutor({
+    stdout: JSON.stringify({
+      response: JSON.stringify({
+        stance: "Analytical",
+        summary: "Gemini returned a non-enum stance label.",
+        arguments: ["Gemini kept the rest of the shape usable."],
+        questions: [],
+        proposed_next_step: "Proceed with the next step."
+      })
+    })
+  });
+  const adapters = createParticipantAdapters(executor);
+
+  const result = await adapters.gemini.run(buildAdapterInput());
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.output.stance, "undecided");
+    assert.equal(result.output.summary, "Gemini returned a non-enum stance label.");
   }
 });
 
@@ -113,6 +170,72 @@ test("adapter normalizes launcher override parse errors into process_error resul
     } else {
       process.env.PARLEY_CLAUDE_ARGS_JSON = originalArgs;
     }
+  }
+});
+
+test("gemini adapter prefers the Windows npm cmd shim when APPDATA provides one", async () => {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  const originalAppData = process.env.APPDATA;
+  const originalGeminiCommand = process.env.PARLEY_GEMINI_COMMAND;
+  const originalGeminiArgs = process.env.PARLEY_GEMINI_ARGS_JSON;
+  const tempRoot = await mkdtemp(path.join(os.tmpdir(), "parley-gemini-shim-"));
+  const shimDir = path.join(tempRoot, "npm");
+  const shimPath = path.join(shimDir, "gemini.cmd");
+
+  await mkdir(shimDir, { recursive: true });
+  await writeFile(shimPath, "@echo off\r\n", "utf8");
+  process.env.APPDATA = tempRoot;
+  delete process.env.PARLEY_GEMINI_COMMAND;
+  delete process.env.PARLEY_GEMINI_ARGS_JSON;
+
+  try {
+    const executor = new FakeCommandExecutor({
+      stdout: JSON.stringify({
+        response: JSON.stringify({
+          stance: "refine",
+          summary: "Gemini result",
+          arguments: ["Gemini argument"],
+          questions: ["Gemini question?"],
+          proposed_next_step: "Gemini next step"
+        }),
+        sessionId: "gemini-session-42"
+      })
+    });
+    const adapters = createParticipantAdapters(executor);
+
+    const result = await adapters.gemini.run(buildAdapterInput());
+
+    assert.equal(executor.calls[0]?.command, process.env.ComSpec ?? "cmd.exe");
+    assert.deepEqual(executor.calls[0]?.args.slice(0, 4), [
+      "/d",
+      "/s",
+      "/c",
+      shimPath
+    ]);
+    assert.equal(result.ok, true);
+  } finally {
+    if (originalAppData === undefined) {
+      delete process.env.APPDATA;
+    } else {
+      process.env.APPDATA = originalAppData;
+    }
+
+    if (originalGeminiCommand === undefined) {
+      delete process.env.PARLEY_GEMINI_COMMAND;
+    } else {
+      process.env.PARLEY_GEMINI_COMMAND = originalGeminiCommand;
+    }
+
+    if (originalGeminiArgs === undefined) {
+      delete process.env.PARLEY_GEMINI_ARGS_JSON;
+    } else {
+      process.env.PARLEY_GEMINI_ARGS_JSON = originalGeminiArgs;
+    }
+
+    await rm(tempRoot, { recursive: true, force: true });
   }
 });
 

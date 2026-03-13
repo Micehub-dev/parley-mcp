@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+
 import { participantResponseJsonSchema, participantResponseSchema } from "./schema.js";
 import type {
   ParticipantAdapter,
@@ -171,14 +174,21 @@ class GeminiParticipantAdapter extends BaseParticipantAdapter {
   }
 
   protected parseOutput(stdout: string) {
-    const payload = JSON.parse(stdout) as Record<string, unknown>;
-    if (payload.error && typeof payload.error === "object") {
-      const message = getFirstString(payload.error as Record<string, unknown>, ["message"]);
+    const payload = tryParseJson(stdout);
+    if (!payload || typeof payload !== "object") {
+      return {
+        output: normalizeGeminiParticipantResponse(stdout)
+      };
+    }
+
+    const payloadRecord = payload as Record<string, unknown>;
+    if (payloadRecord.error && typeof payloadRecord.error === "object") {
+      const message = getFirstString(payloadRecord.error as Record<string, unknown>, ["message"]);
       throw new Error(message ?? "Gemini returned an error payload.");
     }
 
-    const response = parseParticipantResponse(payload.response ?? payload.result);
-    const resumeId = getFirstString(payload, ["session_id", "sessionId"]);
+    const response = parseGeminiParticipantResponse(payloadRecord.response ?? payloadRecord.result);
+    const resumeId = getFirstString(payloadRecord, ["session_id", "sessionId"]);
 
     return resumeId ? { output: response, resumeId } : { output: response };
   }
@@ -235,6 +245,98 @@ function parseParticipantResponse(value: unknown): ParticipantResponse {
   return participantResponseSchema.parse(normalized);
 }
 
+function parseGeminiParticipantResponse(value: unknown): ParticipantResponse {
+  try {
+    return parseParticipantResponse(value);
+  } catch {
+    const normalized = normalizeGeminiParticipantResponse(value);
+    return participantResponseSchema.parse(normalized);
+  }
+}
+
+function normalizeGeminiParticipantResponse(value: unknown): ParticipantResponse {
+  const parsedValue = typeof value === "string" ? tryParseJson(value) ?? value : value;
+
+  if (typeof parsedValue === "string") {
+    const summary = parsedValue.trim();
+    if (!summary) {
+      throw new Error("Gemini returned an empty response.");
+    }
+
+    return {
+      stance: "undecided",
+      summary,
+      arguments: [],
+      questions: [],
+      proposed_next_step: "Continue the parley with the next participant response."
+    };
+  }
+
+  if (!parsedValue || typeof parsedValue !== "object") {
+    throw new Error("Gemini response could not be normalized.");
+  }
+
+  const record = parsedValue as Record<string, unknown>;
+  const summary = getFirstString(record, ["summary", "message", "response"])?.trim();
+  if (!summary) {
+    throw new Error("Gemini response did not include a usable summary.");
+  }
+
+  return {
+    stance: normalizeParticipantStance(getFirstString(record, ["stance"])),
+    summary,
+    arguments: normalizeStringArray(record.arguments),
+    questions: normalizeStringArray(record.questions),
+    proposed_next_step:
+      getFirstString(record, ["proposed_next_step", "proposedNextStep", "next_step"]) ??
+      "Continue the parley with the next participant response."
+  };
+}
+
+function tryParseJson(value: string): unknown | null {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeParticipantStance(value: string | undefined): ParticipantResponse["stance"] {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "agree" || normalized === "disagree" || normalized === "refine") {
+    return normalized;
+  }
+
+  if (!normalized) {
+    return "undecided";
+  }
+
+  if (normalized.includes("agree")) {
+    return "agree";
+  }
+
+  if (normalized.includes("disagree")) {
+    return "disagree";
+  }
+
+  if (normalized.includes("refine")) {
+    return "refine";
+  }
+
+  return "undecided";
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
 function getFirstString(
   payload: Record<string, unknown>,
   keys: string[]
@@ -256,10 +358,47 @@ function resolveParticipantLaunch(participant: ParticipantKind): {
   const prefix = `PARLEY_${participant.toUpperCase()}`;
   const configuredCommand = process.env[`${prefix}_COMMAND`];
   const configuredArgs = process.env[`${prefix}_ARGS_JSON`];
+  const defaultCommand = resolveDefaultParticipantCommand(participant);
+
+  return normalizeWindowsCommandLaunch(
+    configuredCommand && configuredCommand.length > 0 ? configuredCommand : defaultCommand,
+    parseLaunchArgs(configuredArgs)
+  );
+}
+
+function resolveDefaultParticipantCommand(participant: ParticipantKind): string {
+  if (participant !== "gemini" || process.platform !== "win32") {
+    return participant;
+  }
+
+  const appData = process.env.APPDATA;
+  if (!appData) {
+    return participant;
+  }
+
+  const geminiCmdPath = path.join(appData, "npm", "gemini.cmd");
+  return existsSync(geminiCmdPath) ? geminiCmdPath : participant;
+}
+
+function normalizeWindowsCommandLaunch(command: string, leadingArgs: string[]) {
+  if (process.platform !== "win32") {
+    return {
+      command,
+      leadingArgs
+    };
+  }
+
+  const extension = path.extname(command).toLowerCase();
+  if (extension !== ".cmd" && extension !== ".bat") {
+    return {
+      command,
+      leadingArgs
+    };
+  }
 
   return {
-    command: configuredCommand && configuredCommand.length > 0 ? configuredCommand : participant,
-    leadingArgs: parseLaunchArgs(configuredArgs)
+    command: process.env.ComSpec ?? "cmd.exe",
+    leadingArgs: ["/d", "/s", "/c", command, ...leadingArgs]
   };
 }
 

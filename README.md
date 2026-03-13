@@ -142,7 +142,8 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
   - `PARLEY_PARTICIPANT_TIMEOUT_MS=120000`
   - `PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES=1000000`
   - `PARLEY_PARTICIPANT_KILL_GRACE_MS=1000`
-- Windows operators may need to launch Gemini through a PowerShell wrapper via `PARLEY_GEMINI_COMMAND` and `PARLEY_GEMINI_ARGS_JSON`.
+- On Windows, Parley now prefers the npm-installed `gemini.cmd` shim automatically when it is available under `%APPDATA%\\npm`.
+- If only `gemini.ps1` is available, operators may still need `PARLEY_GEMINI_COMMAND` and `PARLEY_GEMINI_ARGS_JSON` overrides.
 - Corrupted or unreadable persisted artifacts now surface explicit `storage_failure` details instead of silently disappearing from read APIs.
 
 ## Documentation

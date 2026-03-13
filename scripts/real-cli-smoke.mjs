@@ -136,7 +136,16 @@ async function maybeConfigureWindowsGeminiWrapper() {
     return;
   }
 
+  const geminiCmdPath = path.join(appData, "npm", "gemini.cmd");
   const geminiWrapperPath = path.join(appData, "npm", "gemini.ps1");
+
+  try {
+    await access(geminiCmdPath);
+    process.env.PARLEY_GEMINI_COMMAND = geminiCmdPath;
+    return;
+  } catch {
+    // Fall back to the PowerShell wrapper when the cmd shim is not present.
+  }
 
   try {
     await access(geminiWrapperPath);
