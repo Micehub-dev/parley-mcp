@@ -6,6 +6,7 @@ import type { ParticipantRawExecution } from "../participants/types.js";
 import type { ParticipantAdapterRegistry } from "../participants/types.js";
 import { FileSystemStore } from "../storage/fs-store.js";
 import type {
+  DiagnosticDetailLevel,
   DiagnosticRepairAction,
   DiagnosticRepairGuidance,
   OrchestratorAuditLogEntry,
@@ -16,6 +17,8 @@ import type {
   RollingSummary,
   SessionDiagnosticParticipant,
   SessionDiagnosticRecord,
+  SessionDiagnosticRecordView,
+  SessionDiagnosticParticipantView,
   SessionConclusion,
   TopicBoardCard,
   TopicRecord,
@@ -76,6 +79,7 @@ export interface ListDiagnosticsInput {
   participant?: ParticipantKind;
   failureKind?: SessionDiagnosticParticipant["failureKind"];
   limit?: number;
+  detailLevel?: DiagnosticDetailLevel;
 }
 
 type StepParticipantDiagnostic = SessionDiagnosticParticipant & {
@@ -698,12 +702,13 @@ export class ParleyService {
     parleySessionId: string;
     diagnostics: Array<{
       diagnosticId: string;
-      record: SessionDiagnosticRecord;
+      record: SessionDiagnosticRecordView;
       repairGuidance: DiagnosticRepairGuidance;
     }>;
   }> {
     await this.getSessionState(input.parleySessionId);
 
+    const detailLevel = input.detailLevel ?? "redacted";
     const diagnostics = await this.store.listSessionDiagnostics(input.parleySessionId);
     const filtered = diagnostics
       .filter(({ record }) => (input.outcome ? record.outcome === input.outcome : true))
@@ -720,7 +725,7 @@ export class ParleyService {
       .slice(0, input.limit ?? 20)
       .map(({ diagnosticId, record }) => ({
         diagnosticId,
-        record,
+        record: this.renderDiagnosticRecord(record, detailLevel),
         repairGuidance: this.buildRepairGuidance(record)
       }));
 
@@ -1264,6 +1269,113 @@ export class ParleyService {
 
   private formatTurnDiagnosticPrefix(turn: number): string {
     return `step-${turn.toString().padStart(4, "0")}`;
+  }
+
+  private renderDiagnosticRecord(
+    record: SessionDiagnosticRecord,
+    detailLevel: DiagnosticDetailLevel
+  ): SessionDiagnosticRecordView {
+    const userNudge = record.userNudge
+      ? detailLevel === "full"
+        ? record.userNudge
+        : "[redacted]"
+      : undefined;
+    const redaction =
+      detailLevel === "redacted"
+        ? {
+            detailLevel,
+            hiddenFields: record.userNudge ? ["userNudge"] : []
+          }
+        : undefined;
+
+    return {
+      sessionId: record.sessionId,
+      turn: record.turn,
+      expectedStateVersion: record.expectedStateVersion,
+      orchestratorRunId: record.orchestratorRunId,
+      speakerOrder: [...record.speakerOrder],
+      ...(userNudge ? { userNudge } : {}),
+      startedAt: record.startedAt,
+      completedAt: record.completedAt,
+      outcome: record.outcome,
+      stateCommitStatus: record.stateCommitStatus,
+      lease: {
+        leaseOwner: record.lease.leaseOwner,
+        leaseExpiresAt: record.lease.leaseExpiresAt,
+        active: record.lease.active
+      },
+      participants: record.participants.map((participant) =>
+        this.renderDiagnosticParticipant(participant, detailLevel)
+      ),
+      ...(redaction ? { redaction } : {})
+    };
+  }
+
+  private renderDiagnosticParticipant(
+    participant: SessionDiagnosticParticipant,
+    detailLevel: DiagnosticDetailLevel
+  ): SessionDiagnosticParticipantView {
+    if (detailLevel === "full") {
+      return {
+        participant: participant.participant,
+        model: participant.model,
+        status: participant.status,
+        raw: {
+          command: participant.raw.command,
+          args: [...participant.raw.args],
+          stdout: participant.raw.stdout,
+          stderr: participant.raw.stderr,
+          exitCode: participant.raw.exitCode
+        },
+        ...(participant.resumeId ? { resumeId: participant.resumeId } : {}),
+        ...(participant.response ? { response: participant.response } : {}),
+        ...(participant.failureKind ? { failureKind: participant.failureKind } : {}),
+        ...(participant.message ? { message: participant.message } : {}),
+        ...(typeof participant.retryable === "boolean"
+          ? { retryable: participant.retryable }
+          : {})
+      };
+    }
+
+    const hiddenFields = [
+      "raw.command",
+      "raw.args",
+      "raw.stdout",
+      "raw.stderr",
+      ...(participant.resumeId ? ["resumeId"] : []),
+      ...(participant.response ? ["response"] : [])
+    ];
+
+    return {
+      participant: participant.participant,
+      model: participant.model,
+      status: participant.status,
+      raw: {
+        command: "[redacted]",
+        args:
+          participant.raw.args.length > 0 ? [`[redacted ${participant.raw.args.length} args]`] : [],
+        stdout: this.describeRedactedText(participant.raw.stdout),
+        stderr: this.describeRedactedText(participant.raw.stderr),
+        exitCode: participant.raw.exitCode
+      },
+      ...(participant.failureKind ? { failureKind: participant.failureKind } : {}),
+      ...(participant.message ? { message: participant.message } : {}),
+      ...(typeof participant.retryable === "boolean"
+        ? { retryable: participant.retryable }
+        : {}),
+      redaction: {
+        detailLevel,
+        hiddenFields
+      }
+    };
+  }
+
+  private describeRedactedText(value: string): string {
+    if (value.length === 0) {
+      return "";
+    }
+
+    return `[redacted ${value.length} chars]`;
   }
 
   private assertActiveSession(state: ParleySessionState) {

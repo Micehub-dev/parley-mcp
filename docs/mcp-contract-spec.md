@@ -7,6 +7,7 @@ This document tracks the implemented MCP contract for the current runtime.
 - Sprint 4 rolling summary, structured conclusion, and explicit topic promotion are now implemented.
 - Sprint 5 search, workspace-board retrieval, and diagnostic inspection surfaces are now implemented.
 - Sprint 6 resume/lease verification hardening and additive repair-action hints are now implemented.
+- Sprint 7 diagnostics access hardening now redacts diagnostic records by default and keeps full detail behind explicit opt-in.
 - Compatibility string fields remain in place so existing orchestrators can migrate additively.
 - The design rationale and frozen migration rules still live in `docs/decisions/ADR-0001-sprint-4-synthesis-contract.md`.
 
@@ -503,6 +504,7 @@ Input:
 - `participant?`
 - `failureKind?`
 - `limit`
+- `detailLevel?` (`redacted` | `full`, default `redacted`)
 
 Output:
 
@@ -516,7 +518,23 @@ Output:
   "diagnosticId": "step-0001-participant_failure-1234567890",
   "record": {
     "outcome": "participant_failure",
-    "stateCommitStatus": "not_committed"
+    "stateCommitStatus": "not_committed",
+    "participants": [
+      {
+        "participant": "gemini",
+        "raw": {
+          "command": "[redacted]",
+          "args": ["[redacted 3 args]"],
+          "stdout": "[redacted 120 chars]",
+          "stderr": "[redacted 42 chars]",
+          "exitCode": 17
+        },
+        "redaction": {
+          "detailLevel": "redacted",
+          "hiddenFields": ["raw.command", "raw.args", "raw.stdout", "raw.stderr"]
+        }
+      }
+    ]
   },
   "repairGuidance": {
     "summary": "Participant execution failed before the turn was committed.",
@@ -541,6 +559,9 @@ Behavior notes:
 
 - Diagnostics remain stored under `.multi-llm/sessions/{sessionId}/diagnostics/`.
 - Filtering is additive and filesystem-backed.
+- `record` is a read-time view rather than a guarantee of the raw persisted JSON payload.
+- `detailLevel = redacted` hides raw subprocess command, args, stdout, stderr, resume IDs, structured participant responses, and user nudges from the MCP response.
+- `detailLevel = full` returns the unredacted diagnostic record shape for intentional local operator debugging.
 - `repairGuidance.canRetrySameVersion = false` together with `shouldReadStateFirst = true` signals the replay-boundary case where session state may already be committed.
 - `repairGuidance.nextAction` is additive helper output derived from the diagnostic record; it does not introduce new session state.
 

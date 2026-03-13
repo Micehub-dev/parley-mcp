@@ -27,9 +27,10 @@ As of 2026-03-13, the repository is beyond the bootstrap, placeholder, and runti
 - Failed step attempts write diagnostics under `.multi-llm/sessions/<sessionId>/diagnostics/`.
 - Promoted topic memory is now searchable through dedicated MCP tooling.
 - Workspace boards and operator-facing diagnostic inspection are now exposed through MCP tools.
+- Diagnostic inspection now returns redacted records by default with explicit full-detail opt-in.
 - Automated coverage exists at the service, adapter, and stdio MCP integration layers.
 
-Sprint 6 hardening is now functionally complete ahead of the original calendar window. The next product gap is deciding packaging direction only after the harder contract, synthesis, and repair surfaces stay stable and diagnostics access rules are clearer.
+Sprint 6 hardening is now functionally complete ahead of the original calendar window. Sprint 7 closes the next immediate gap by hardening diagnostics access rules before packaging direction is revisited.
 
 ## 2. Working Source Of Truth
 
@@ -285,6 +286,24 @@ Delivered scope:
 - additive repair-oriented helper output on `parley_list_diagnostics`
 - planning, matrix, and risk refresh that keeps packaging explicitly downstream of the hardening bar
 
+### Sprint 7: Diagnostics Redaction and Access Hardening
+
+Window: 2026-03-13 to 2026-03-26
+
+Goal:
+
+- make diagnostics inspection safe-by-default for orchestrators while preserving explicit full-detail access for local operators
+
+Status:
+
+- Functionally complete as of 2026-03-13
+
+Delivered scope:
+
+- `parley_list_diagnostics` defaults to redacted diagnostic records
+- explicit `detailLevel: "full"` opt-in keeps local operator debugging viable
+- contract, sprint, README, risk, and matrix docs now reflect the tighter diagnostics boundary
+
 ## 7. Epic View
 
 ### Epic 1. Core Orchestration
@@ -358,15 +377,15 @@ Done when:
 
 ### Work That Should Happen Now
 
-- keep the Sprint 6 verification and synthesis bar stable in CI
-- clarify redaction and access rules before diagnostics-oriented helper surfaces expand further
-- revisit packaging direction only as a thin-wrapper follow-up to the hardened MCP core
+- keep the Sprint 7 diagnostics redaction boundary stable in CI
+- revisit packaging direction only as a thin-wrapper follow-up after diagnostics hardening proves stable
+- keep redaction-aware operator ergonomics additive and tool-first
 
 ### Work That Should Happen Soon After
 
 - broader OS and transport validation beyond the current Windows-first matrix
-- packaging direction once the Sprint 6 hardening surface proves stable
-- redaction-aware operator ergonomics beyond the current local inspection scope
+- packaging direction once the Sprint 7 hardening surface proves stable
+- stronger access policy options if diagnostics move beyond local operator use
 
 ### Work That Should Happen Later
 
@@ -412,13 +431,13 @@ Mitigation:
 
 ### This Week
 
-- align planning docs with the implemented Sprint 5 retrieval and operator state
-- review remaining orchestrator coverage gaps after the new `claude` and `gemini`-labeled stdio scenarios
-- freeze Sprint 6 around verification expansion, synthesis refinement, and minimal repair helpers before any packaging work
+- keep the new diagnostics redaction defaults and explicit full-detail path green in CI
+- review whether any helper surface still leaks raw subprocess detail unexpectedly
+- revisit packaging direction only after the diagnostics boundary stays stable
 
 ### Next Implementation Priority
 
-1. Keep the new resume-reuse and lease-conflict verification paths green and expand only if new drift appears.
-2. Tighten diagnostics redaction and access rules before helper output grows beyond local operator use.
-3. Revisit packaging direction only after the Sprint 6 hardening work stays stable.
-4. Expand OS and transport coverage later if those risks rise above packaging-direction work.
+1. Keep the new diagnostics redaction and full-detail opt-in paths green and expand only if new drift appears.
+2. Revisit packaging direction only after the Sprint 7 hardening work stays stable.
+3. Expand OS and transport coverage later if those risks rise above packaging-direction work.
+4. Consider stronger access policy options only if diagnostics move beyond local operator use.
