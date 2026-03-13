@@ -4,7 +4,7 @@
 
 Parley is an orchestrator-agnostic MCP server for running and managing multi-LLM parley sessions across Codex, Claude, and Gemini.
 
-The current codebase is at the production-readiness hardening stage:
+The current codebase is at the cross-environment verification and acceptance hardening stage:
 
 - Node.js + TypeScript
 - MCP server over stdio
@@ -25,6 +25,9 @@ The current codebase is at the production-readiness hardening stage:
 - atomic JSON persistence for core filesystem artifacts
 - explicit corrupted-artifact visibility on session/topic/diagnostic reads
 - documented real-CLI smoke workflow and release runbook baseline
+- documented Codex Desktop acceptance checklist
+- Ubuntu CI evidence for automated lint, typecheck, test, and build coverage
+- Gemini normalization for common fenced JSON, labeled plain text, and partial JSON response shapes
 - automated service, adapter, and stdio MCP integration coverage
 
 ## Source Of Truth
@@ -35,7 +38,7 @@ Read these files first before making changes:
 2. `multi-cli-parley-architecture.md`
 3. `docs/project-operating-plan.md`
 4. `docs/mcp-contract-spec.md`
-5. `docs/sprints/2026-sprint-8.md`
+5. `docs/sprints/2026-sprint-9.md`
 
 If code and docs disagree, prefer:
 
@@ -97,10 +100,10 @@ npm run dev
 
 Priority order for upcoming work:
 
-1. keep subprocess guardrails, corruption visibility, and diagnostics redaction stable in CI
-2. expand real CLI and OS verification beyond the current Windows-first bar
-3. keep release runbook ownership and support-boundary docs aligned with runtime reality
-4. packaging direction only after Sprint 8 production-readiness hardening remains stable
+1. keep subprocess guardrails, corruption visibility, diagnostics redaction, and Gemini normalization stable in CI
+2. keep Linux automation evidence, Windows real smoke evidence, and Codex Desktop acceptance docs aligned with runtime reality
+3. keep release runbook ownership and support-boundary docs honest about macOS being unverified
+4. packaging direction only after Sprint 9 verification and acceptance hardening remains stable
 5. UI or extension work only as thin wrappers over the stable MCP core
 
 Do not jump ahead to UI or packaging unless the current sprint says so.
@@ -144,6 +147,8 @@ Escalate before changing:
 - `parley_list_diagnostics` is the current operator-facing inspection surface; replay guidance and next-safe tool actions are derived at read time rather than stored in session state.
 - `parley_list_diagnostics` now returns redacted records by default; use `detailLevel: "full"` only for intentional local debugging.
 - participant subprocesses now enforce default timeout, kill-grace, and output-size guardrails; operators can override them with `PARLEY_PARTICIPANT_TIMEOUT_MS`, `PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES`, and `PARLEY_PARTICIPANT_KILL_GRACE_MS`.
+- Gemini normalization now recovers common fenced JSON, labeled plain-text, and partial JSON output shapes when they can be mapped safely into the shared response contract.
 - filesystem reads now distinguish missing artifacts from invalid or unreadable ones, and JSON-backed artifacts write through atomic temp-file replacement.
 - `npm run smoke:real` is the current release-oriented real-CLI check; Windows Gemini wrapper installs may require explicit launcher overrides.
+- `docs/codex-desktop-acceptance.md` is the current repeatable operator checklist for Codex Desktop registration and baseline tool-flow verification.
 - Packaging for Claude plugins, Gemini extensions, and UI surfaces is explicitly later-phase work.

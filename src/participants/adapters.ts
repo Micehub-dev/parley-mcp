@@ -219,6 +219,14 @@ export function buildParticipantPrompt(
     "Return only JSON that matches this exact schema:",
     JSON.stringify(participantResponseJsonSchema, null, 2),
     "",
+    "Output rules:",
+    "- Return exactly one JSON object and no surrounding commentary.",
+    "- Do not wrap the JSON in markdown fences.",
+    "- Use one of: agree, disagree, refine, undecided.",
+    "- If you are unsure about stance, use undecided.",
+    "- Keep arguments and questions as JSON arrays. Use [] when empty.",
+    "- Always provide a short proposed_next_step string.",
+    "",
     "Session context:",
     `- session_id: ${input.session.sessionId}`,
     `- topic: ${input.session.topic}`,
@@ -255,10 +263,15 @@ function parseGeminiParticipantResponse(value: unknown): ParticipantResponse {
 }
 
 function normalizeGeminiParticipantResponse(value: unknown): ParticipantResponse {
-  const parsedValue = typeof value === "string" ? tryParseJson(value) ?? value : value;
+  const parsedValue = normalizeGeminiResponseValue(value);
 
   if (typeof parsedValue === "string") {
-    const summary = parsedValue.trim();
+    const structuredTextResponse = parseGeminiLabeledTextResponse(parsedValue);
+    if (structuredTextResponse) {
+      return structuredTextResponse;
+    }
+
+    const summary = normalizeGeminiSummaryText(parsedValue);
     if (!summary) {
       throw new Error("Gemini returned an empty response.");
     }
@@ -277,20 +290,61 @@ function normalizeGeminiParticipantResponse(value: unknown): ParticipantResponse
   }
 
   const record = parsedValue as Record<string, unknown>;
-  const summary = getFirstString(record, ["summary", "message", "response"])?.trim();
+  const structuredTextCandidate = getFirstText(record, ["response", "content", "text", "message"]);
+  const structuredTextResponse = structuredTextCandidate
+    ? parseGeminiLabeledTextResponse(structuredTextCandidate)
+    : null;
+  if (structuredTextResponse) {
+    return structuredTextResponse;
+  }
+
+  const summary = normalizeGeminiSummaryText(
+    getFirstText(record, [
+      "summary",
+      "message",
+      "response",
+      "text",
+      "content",
+      "analysis"
+    ]) ?? ""
+  );
   if (!summary) {
     throw new Error("Gemini response did not include a usable summary.");
   }
 
   return {
-    stance: normalizeParticipantStance(getFirstString(record, ["stance"])),
+    stance: normalizeParticipantStance(getFirstText(record, ["stance", "position", "opinion"])),
     summary,
-    arguments: normalizeStringArray(record.arguments),
-    questions: normalizeStringArray(record.questions),
+    arguments: normalizeStringArray(
+      record.arguments ?? record.argumentList ?? record.points ?? record.reasons
+    ),
+    questions: normalizeStringArray(
+      record.questions ?? record.followUpQuestions ?? record.follow_up_questions
+    ),
     proposed_next_step:
-      getFirstString(record, ["proposed_next_step", "proposedNextStep", "next_step"]) ??
+      getFirstText(record, [
+        "proposed_next_step",
+        "proposedNextStep",
+        "next_step",
+        "nextStep",
+        "recommended_next_step"
+      ]) ??
       "Continue the parley with the next participant response."
   };
+}
+
+function normalizeGeminiResponseValue(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  const unfenced = unwrapMarkdownCodeFence(trimmed);
+  return tryParseJson(unfenced) ?? unfenced;
 }
 
 function tryParseJson(value: string): unknown | null {
@@ -299,6 +353,12 @@ function tryParseJson(value: string): unknown | null {
   } catch {
     return null;
   }
+}
+
+function unwrapMarkdownCodeFence(value: string): string {
+  const match = /^```(?:json)?\s*([\s\S]*?)\s*```$/iu.exec(value);
+  const fencedBody = match?.[1];
+  return fencedBody ? fencedBody.trim() : value;
 }
 
 function normalizeParticipantStance(value: string | undefined): ParticipantResponse["stance"] {
@@ -327,14 +387,188 @@ function normalizeParticipantStance(value: string | undefined): ParticipantRespo
 }
 
 function normalizeStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) {
+  if (typeof value === "string") {
+    return splitGeminiListText(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => normalizeStringArray(item));
+  }
+
+  const extracted = extractTextValue(value);
+  if (!extracted) {
     return [];
   }
 
-  return value
-    .filter((item): item is string => typeof item === "string")
-    .map((item) => item.trim())
+  return splitGeminiListText(extracted);
+}
+
+function splitGeminiListText(value: string): string[] {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const items = trimmed.includes("\n")
+    ? trimmed.split(/\r?\n/u)
+    : trimmed.includes(";")
+      ? trimmed.split(/\s*;\s*/u)
+      : [trimmed];
+
+  return items
+    .map((item) => item.replace(/^(?:[-*]|\u2022)\s*/u, "").trim())
     .filter((item) => item.length > 0);
+}
+
+function normalizeGeminiSummaryText(value: string): string {
+  const lines = value
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  const cleanedLines = [...lines];
+  while (cleanedLines[0] && isGeminiMetaPlanningLine(cleanedLines[0])) {
+    cleanedLines.shift();
+  }
+
+  const summary = (cleanedLines.length > 0 ? cleanedLines : lines).join(" ").trim();
+  return summary;
+}
+
+function isGeminiMetaPlanningLine(value: string): boolean {
+  return /^(?:i will|i'll|let me)\b/iu.test(value);
+}
+
+function parseGeminiLabeledTextResponse(value: string): ParticipantResponse | null {
+  const sections = {
+    stance: [] as string[],
+    summary: [] as string[],
+    arguments: [] as string[],
+    questions: [] as string[],
+    proposed_next_step: [] as string[]
+  };
+  let currentSection: keyof typeof sections | null = null;
+  let sawHeader = false;
+
+  for (const rawLine of value.split(/\r?\n/u)) {
+    const line = rawLine.trim();
+    if (!line) {
+      continue;
+    }
+
+    const headerMatch = /^([a-zA-Z _-]+):\s*(.*)$/u.exec(line);
+    const headerName = headerMatch?.[1];
+    const sectionKey = headerName ? mapGeminiTextSection(headerName) : null;
+    if (sectionKey) {
+      sawHeader = true;
+      currentSection = sectionKey;
+      const sectionValue = headerMatch?.[2];
+      if (sectionValue) {
+        sections[sectionKey].push(sectionValue.trim());
+      }
+      continue;
+    }
+
+    if (currentSection) {
+      sections[currentSection].push(line);
+    }
+  }
+
+  const summary = sections.summary.join(" ").trim();
+  if (!sawHeader || !summary) {
+    return null;
+  }
+
+  return {
+    stance: normalizeParticipantStance(sections.stance.join(" ")),
+    summary,
+    arguments: normalizeStringArray(sections.arguments),
+    questions: normalizeStringArray(sections.questions),
+    proposed_next_step:
+      sections.proposed_next_step.join(" ").trim() ||
+      "Continue the parley with the next participant response."
+  };
+}
+
+function mapGeminiTextSection(value: string):
+  | "stance"
+  | "summary"
+  | "arguments"
+  | "questions"
+  | "proposed_next_step"
+  | null {
+  const normalized = value.trim().toLowerCase().replace(/[_\s]+/gu, " ");
+
+  if (normalized === "stance" || normalized === "position") {
+    return "stance";
+  }
+
+  if (normalized === "summary" || normalized === "message" || normalized === "response") {
+    return "summary";
+  }
+
+  if (
+    normalized === "arguments" ||
+    normalized === "argument" ||
+    normalized === "points" ||
+    normalized === "reasons"
+  ) {
+    return "arguments";
+  }
+
+  if (normalized === "questions" || normalized === "question") {
+    return "questions";
+  }
+
+  if (
+    normalized === "next step" ||
+    normalized === "proposed next step" ||
+    normalized === "recommended next step"
+  ) {
+    return "proposed_next_step";
+  }
+
+  return null;
+}
+
+function getFirstText(
+  payload: Record<string, unknown>,
+  keys: string[]
+): string | undefined {
+  for (const key of keys) {
+    const value = extractTextValue(payload[key]);
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function extractTextValue(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  if (Array.isArray(value)) {
+    const values = value.map((item) => extractTextValue(item)).filter((item): item is string => Boolean(item));
+    return values.length > 0 ? values.join("\n") : undefined;
+  }
+
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  for (const key of ["text", "summary", "message", "response", "content", "analysis", "value"]) {
+    const extracted = extractTextValue(record[key]);
+    if (extracted) {
+      return extracted;
+    }
+  }
+
+  return undefined;
 }
 
 function getFirstString(

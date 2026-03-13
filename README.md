@@ -59,7 +59,7 @@ flowchart LR
 
 ## Current Status
 
-The repository is currently at the **production-readiness hardening** stage.
+The repository is currently at the **cross-environment verification and acceptance hardening** stage.
 
 - MCP server skeleton and core session lifecycle are implemented
 - Filesystem-backed storage is implemented
@@ -80,7 +80,10 @@ The repository is currently at the **production-readiness hardening** stage.
 - Failed participant attempts persist debug-friendly diagnostics under `.multi-llm/sessions/<sessionId>/diagnostics/`
 - Service and adapter tests cover happy-path execution, retrieval, diagnostics, and key failure modes
 - Stdio MCP integration coverage now exercises `start -> claim_lease -> step -> finish -> promote -> search -> board`, resume reuse, and lease-conflict scenarios
-- `npm run smoke:real` provides a release-oriented real CLI smoke path, with the current Windows Gemini wrapper caveat documented under `docs/real-cli-smoke.md`
+- `npm run smoke:real` now passes on a Windows local environment using `claude.exe` together with the npm-installed `gemini.cmd` shim
+- a live Codex Desktop installation and MCP usage pass has now verified server registration, lease flow, step execution, diagnostics inspection, and real participant execution on Windows
+- GitHub Actions CI now exercises lint, typecheck, test, and build on `ubuntu-latest` as the current Linux automation evidence path
+- Gemini normalization now recovers common markdown-fenced JSON, labeled plain-text, and partial JSON response shapes without widening the shared contract
 - CI is configured for install, lint, test, typecheck, and build
 
 ## Repository Layout
@@ -138,6 +141,10 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 
 ## Operational Notes
 
+- Supported transport today: stdio MCP only
+- Current automated Linux evidence comes from GitHub Actions on `ubuntu-latest`
+- Current real-environment operator evidence comes from Windows local `npm run smoke:real` plus the Codex Desktop acceptance pass
+- macOS remains unverified; keep support wording narrow until an actual macOS environment is exercised
 - Default participant guardrails:
   - `PARLEY_PARTICIPANT_TIMEOUT_MS=120000`
   - `PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES=1000000`
@@ -149,6 +156,7 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 ## Documentation
 
 - `AGENTS.md`: onboarding guide for coding agents and contributors
+- `docs/codex-desktop-acceptance.md`: repeatable Codex Desktop installation and baseline operator verification flow
 - `docs/project-operating-plan.md`: PM-oriented roadmap, sprint structure, and prioritization
 - `docs/mcp-contract-spec.md`: MCP contract source of truth
 - `docs/real-cli-smoke.md`: release-oriented real CLI smoke workflow and latest observed result
@@ -157,9 +165,10 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 
 ## Roadmap
 
-- Keep packaging direction downstream of the now-stable Sprint 8 production-readiness hardening bar
-- Keep subprocess guardrails, corruption visibility, and diagnostics access rules stable before broader distribution work
-- Package thin surfaces for plugins, extensions, and future UI layers only after those safeguards stay stable
+- Add a real Linux CLI evidence path only when an actual Linux participant environment is available
+- Keep the Codex Desktop acceptance checklist and Windows smoke evidence current as release gates evolve
+- Validate macOS only from an exercised macOS environment; keep the support statement narrow until then
+- Package thin surfaces for plugins, extensions, and future UI layers only after the stronger Sprint 9 verification bar remains stable
 
 ## Use Cases
 

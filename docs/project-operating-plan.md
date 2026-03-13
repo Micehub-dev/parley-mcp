@@ -31,9 +31,13 @@ As of 2026-03-13, the repository is beyond the bootstrap, placeholder, and runti
 - Participant subprocesses now enforce timeout, kill-grace, and output-size guardrails.
 - JSON-backed artifacts now write through atomic temp-file replacement and surface explicit corruption/readability failures on read paths.
 - A release-oriented real CLI smoke workflow and runbook baseline now exist for production-readiness review.
-- Automated coverage exists at the service, adapter, and stdio MCP integration layers.
+- Automated coverage exists at the service, adapter, and stdio MCP integration layers and is exercised in GitHub Actions on `ubuntu-latest`.
+- A live Codex Desktop installation and MCP usage pass has now exercised the actual operator flow on Windows.
+- The Windows Gemini launcher path has been hardened to prefer the npm-installed `gemini.cmd` shim, and the Windows real smoke path is green again.
+- Gemini normalization now recovers common fenced JSON, labeled plain-text, and partial JSON response shapes without widening the shared participant contract.
+- A repeatable Codex Desktop acceptance checklist now exists for release review and operator verification.
 
-Sprint 6 hardening is now functionally complete ahead of the original calendar window. Sprint 7 closed the immediate diagnostics access gap, and Sprint 8 has now landed the intended production-readiness hardening pass before packaging direction is revisited.
+Sprint 6 hardening is now functionally complete ahead of the original calendar window. Sprint 7 closed the immediate diagnostics access gap, Sprint 8 landed the intended production-readiness hardening pass, and Sprint 9 verification and acceptance work has now landed early enough to tighten the support statement before packaging direction is revisited.
 
 ## 2. Working Source Of Truth
 
@@ -326,6 +330,39 @@ Delivered scope:
 - real CLI smoke workflow plus a clearer Windows-first OS support statement
 - release ownership, preflight, rollback, and runbook hardening
 
+### Sprint 9: Cross-Environment Verification and Acceptance Hardening
+
+Window: 2026-04-10 to 2026-04-23
+
+Goal:
+
+- expand real-environment verification beyond the current Windows baseline where additional environments are actually available
+- define a repeatable Codex Desktop acceptance path
+- tighten Gemini participant quality normalization before packaging work resumes
+
+Status:
+
+- Functionally complete as of 2026-03-13
+
+Delivered scope:
+
+- Linux automation evidence is now called out explicitly through exercised GitHub Actions `ubuntu-latest` coverage while the support statement stays narrow about real CLI portability
+- a repeatable Codex Desktop acceptance checklist now documents registration, tool discovery, baseline lease flow, diagnostics inspection, and finish behavior
+- Gemini participant hardening now recovers common fenced JSON, labeled plain-text, and partial JSON response shapes and is covered by new adapter and service regression tests
+- release, matrix, README, AGENTS, and risk docs now align around the same Windows-first real-environment support boundary and macOS caveat
+
+Detailed scope:
+
+- See `docs/sprints/2026-sprint-9.md`
+
+Exit bar:
+
+- broader real-environment evidence exists where an additional environment is actually exercised, or the narrower support statement is explicitly retained
+- Linux verification claims are backed by exercised WSL and or CI evidence when used
+- macOS verification is claimed only if an actual macOS environment is exercised; otherwise the sprint must leave the support statement unchanged and document the macOS acceptance path
+- Codex Desktop acceptance steps are documented and repeatable
+- Gemini participant execution remains green on Windows smoke with lower avoidable output-shape failures
+
 ## 7. Epic View
 
 ### Epic 1. Core Orchestration
@@ -399,13 +436,13 @@ Done when:
 
 ### Work That Should Happen Now
 
-- keep the Sprint 8 subprocess guardrails, corruption visibility, and diagnostics redaction boundaries green in CI
-- rerun the real-CLI smoke path before intentional release review and record any environment caveats
-- keep release ownership, support-boundary docs, and rollback guidance aligned with runtime reality
+- keep the Sprint 8 subprocess guardrails, corruption visibility, diagnostics redaction boundaries, and Sprint 9 Gemini normalization coverage green in CI
+- keep the Codex Desktop acceptance checklist, real-CLI smoke path, and support-boundary docs aligned with runtime reality
+- preserve the current narrow macOS wording until an actual macOS environment is exercised
 
 ### Work That Should Happen Soon After
 
-- packaging direction once Sprint 8 production-readiness hardening proves stable
+- packaging direction once the Sprint 9 verification and acceptance bar proves stable
 - broader transport validation if it rises above the current stdio-first release posture
 - stronger access policy options if diagnostics move beyond local operator use
 
@@ -453,14 +490,15 @@ Mitigation:
 
 ### This Week
 
-- keep the diagnostics redaction defaults and explicit full-detail path green in CI
-- define Sprint 8 implementation scope around subprocess guardrails, storage durability, real-CLI verification, and release runbooks
-- review whether any helper surface still leaks raw subprocess detail unexpectedly
+- keep the diagnostics redaction defaults, Gemini normalization regressions, and explicit full-detail path green in CI
+- record the latest Windows smoke, Codex Desktop acceptance, and Ubuntu CI evidence in release review artifacts
+- review whether a real Linux CLI environment is available before broadening the current Windows-first support wording
 
 ### Next Implementation Priority
 
-1. Keep the diagnostics redaction and full-detail opt-in paths green while Sprint 8 runtime hardening stays stable.
-2. Keep participant subprocess controls and filesystem durability stable now that the production-readiness bar is implemented.
-3. Expand real-CLI and OS verification beyond the current Windows-first statement only when additional environments are actually exercised.
-4. Revisit packaging direction only after the Sprint 8 hardening bar stays stable.
-5. Consider stronger access policy options only if diagnostics move beyond local operator use.
+1. Expand real-CLI and OS verification beyond the current Windows-first statement only when additional environments are actually exercised.
+2. Treat Linux and macOS verification as separate evidence tracks; CI is acceptable Linux automation evidence, but do not claim macOS stability without an actual macOS run.
+3. Keep the Codex Desktop acceptance path current whenever release or installation behavior changes.
+4. Keep Gemini participant quality normalization and Windows smoke stability green while preserving the shared participant contract.
+5. Revisit packaging direction only after the Sprint 9 verification bar stays stable.
+6. Consider stronger access policy options only if diagnostics move beyond local operator use.

@@ -121,6 +121,29 @@ test("gemini adapter normalizes plain-text responses into the shared participant
   }
 });
 
+test("gemini adapter drops leading meta-planning lines from plain-text summaries", async () => {
+  const executor = new FakeCommandExecutor({
+    stdout: JSON.stringify({
+      response: [
+        "I will inspect the workspace to understand the project.",
+        "I will read the config before responding.",
+        "Parley needs resilient retry and recovery behavior around participant failures."
+      ].join("\n")
+    })
+  });
+  const adapters = createParticipantAdapters(executor);
+
+  const result = await adapters.gemini.run(buildAdapterInput());
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(
+      result.output.summary,
+      "Parley needs resilient retry and recovery behavior around participant failures."
+    );
+  }
+});
+
 test("gemini adapter coerces non-enum stance values from JSON payloads", async () => {
   const executor = new FakeCommandExecutor({
     stdout: JSON.stringify({
@@ -141,6 +164,100 @@ test("gemini adapter coerces non-enum stance values from JSON payloads", async (
   if (result.ok) {
     assert.equal(result.output.stance, "undecided");
     assert.equal(result.output.summary, "Gemini returned a non-enum stance label.");
+  }
+});
+
+test("gemini adapter parses markdown-fenced JSON responses", async () => {
+  const executor = new FakeCommandExecutor({
+    stdout: JSON.stringify({
+      response: "```json\n{\"stance\":\"refine\",\"summary\":\"Use the smaller rollout first.\",\"arguments\":[\"It lowers deployment risk.\"],\"questions\":[],\"proposed_next_step\":\"Run the smoke path on the canary.\"}\n```"
+    })
+  });
+  const adapters = createParticipantAdapters(executor);
+
+  const result = await adapters.gemini.run(buildAdapterInput());
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.output.stance, "refine");
+    assert.equal(result.output.summary, "Use the smaller rollout first.");
+    assert.deepEqual(result.output.arguments, ["It lowers deployment risk."]);
+    assert.equal(result.output.proposed_next_step, "Run the smoke path on the canary.");
+  }
+});
+
+test("gemini adapter normalizes partial JSON shapes with alternate keys and string lists", async () => {
+  const executor = new FakeCommandExecutor({
+    stdout: JSON.stringify({
+      response: {
+        position: "Support with refinement",
+        text: "The launch plan is usable but needs a smaller blast radius first.",
+        points: "- Start with one environment\n- Keep the rollback ready",
+        followUpQuestions: "Do we have an operator on call?",
+        nextStep: "Run smoke in the lowest-risk environment."
+      }
+    })
+  });
+  const adapters = createParticipantAdapters(executor);
+
+  const result = await adapters.gemini.run(buildAdapterInput());
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.output.stance, "refine");
+    assert.equal(
+      result.output.summary,
+      "The launch plan is usable but needs a smaller blast radius first."
+    );
+    assert.deepEqual(result.output.arguments, [
+      "Start with one environment",
+      "Keep the rollback ready"
+    ]);
+    assert.deepEqual(result.output.questions, ["Do we have an operator on call?"]);
+    assert.equal(
+      result.output.proposed_next_step,
+      "Run smoke in the lowest-risk environment."
+    );
+  }
+});
+
+test("gemini adapter extracts labeled plain-text sections into the shared participant shape", async () => {
+  const executor = new FakeCommandExecutor({
+    stdout: JSON.stringify({
+      response: [
+        "Stance: disagree",
+        "Summary: The current release plan still overstates Linux readiness.",
+        "Arguments:",
+        "- CI proves automated behavior, not real CLI parity.",
+        "- WSL is not ready on this workstation yet.",
+        "Questions:",
+        "- Should we keep the support statement Windows-first?",
+        "Next step: Document the macOS checklist and retain the narrow support boundary."
+      ].join("\n")
+    })
+  });
+  const adapters = createParticipantAdapters(executor);
+
+  const result = await adapters.gemini.run(buildAdapterInput());
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.output.stance, "disagree");
+    assert.equal(
+      result.output.summary,
+      "The current release plan still overstates Linux readiness."
+    );
+    assert.deepEqual(result.output.arguments, [
+      "CI proves automated behavior, not real CLI parity.",
+      "WSL is not ready on this workstation yet."
+    ]);
+    assert.deepEqual(result.output.questions, [
+      "Should we keep the support statement Windows-first?"
+    ]);
+    assert.equal(
+      result.output.proposed_next_step,
+      "Document the macOS checklist and retain the narrow support boundary."
+    );
   }
 });
 

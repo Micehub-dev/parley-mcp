@@ -10,8 +10,10 @@
 
 - Supported transport: stdio MCP only
 - Minimum runtime: Node.js 22+
-- Current automated coverage: Windows fixture-backed service, adapter, and stdio MCP flows
-- Current real-environment coverage: Windows local smoke through `npm run smoke:real`
+- Current automated coverage: GitHub Actions `ubuntu-latest` lint, typecheck, test, and build plus fixture-backed service, adapter, and stdio MCP flows
+- Current real-environment coverage: Windows local smoke through `npm run smoke:real` and a Windows Codex Desktop acceptance pass
+- Current Codex Desktop checklist: `docs/codex-desktop-acceptance.md`
+- Current macOS position: unverified; keep release notes explicitly narrow until an actual macOS environment is exercised
 - Current CLI caveat: on Windows, prefer the npm-installed `gemini.cmd` shim; use `PARLEY_GEMINI_COMMAND=powershell.exe` plus `PARLEY_GEMINI_ARGS_JSON` only when `gemini.ps1` is the only workable launcher
 - Current diagnostics caveat: `parley_list_diagnostics` is redacted by default; `detailLevel: "full"` remains local-operator-only debugging access
 
@@ -22,6 +24,7 @@
 - Confirm `.multi-llm/config.json` compatibility has been reviewed if model allowlists or defaults changed.
 - Confirm participant CLI prerequisites are documented for the target operators.
 - Confirm diagnostics access defaults remain redacted unless an explicit local debugging flow requires otherwise.
+- Confirm the Codex Desktop acceptance checklist still matches the current operator flow if the release mentions Codex Desktop support.
 
 ## Smoke
 
@@ -33,6 +36,7 @@
 - Keep `PARLEY_PARTICIPANT_TIMEOUT_MS` and `PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES` at their intended release values during the smoke check.
 - Treat any `participant_failure` with `guardrail`, `timedOut`, or `outputLimitExceeded` details as a release blocker until the operator confirms the behavior is expected.
 - Treat `storage_failure` with `artifactType` or `failureKind` details as a release blocker until the damaged artifact path and replay boundary are understood.
+- If release review includes Codex Desktop support claims, run the checklist in `docs/codex-desktop-acceptance.md` alongside the smoke check.
 
 ## Rollout
 
@@ -51,5 +55,7 @@
 
 - Record whether the real-CLI smoke passed cleanly or exposed an environment-specific caveat.
 - Record any required launcher overrides, especially on Windows participant wrappers.
+- Record whether the Codex Desktop acceptance checklist was exercised alongside the release candidate.
+- Record whether Linux evidence came only from CI or from an additional real environment, and keep macOS wording narrow when it remains unverified.
 - Update `docs/risk-register.md` and `docs/test-matrix.md` if the release changed the real-environment confidence bar.
 - Archive temporary smoke artifacts unless an active investigation requires them to remain on disk.
