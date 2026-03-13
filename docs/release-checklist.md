@@ -12,7 +12,7 @@
 - Minimum runtime: Node.js 22+
 - Current automated coverage: Windows fixture-backed service, adapter, and stdio MCP flows
 - Current real-environment coverage: Windows local smoke through `npm run smoke:real`
-- Current CLI caveat: on Windows, `gemini.ps1` may require `PARLEY_GEMINI_COMMAND=powershell.exe` plus `PARLEY_GEMINI_ARGS_JSON` so the wrapper is launchable by `spawn`
+- Current CLI caveat: on Windows, prefer the npm-installed `gemini.cmd` shim; use `PARLEY_GEMINI_COMMAND=powershell.exe` plus `PARLEY_GEMINI_ARGS_JSON` only when `gemini.ps1` is the only workable launcher
 - Current diagnostics caveat: `parley_list_diagnostics` is redacted by default; `detailLevel: "full"` remains local-operator-only debugging access
 
 ## Preflight
@@ -26,6 +26,7 @@
 ## Smoke
 
 - Run `npm run smoke:real` on a workstation with real `claude` and `gemini` CLIs available.
+- On Windows, prefer `%APPDATA%\\npm\\gemini.cmd` when that npm shim exists.
 - If Windows resolves Gemini only through `gemini.ps1`, set:
   - `PARLEY_GEMINI_COMMAND=powershell.exe`
   - `PARLEY_GEMINI_ARGS_JSON=["-NoProfile","-ExecutionPolicy","Bypass","-File","C:\\Users\\<user>\\AppData\\Roaming\\npm\\gemini.ps1"]`
