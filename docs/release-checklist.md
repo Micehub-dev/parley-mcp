@@ -10,7 +10,7 @@
 
 - Supported transport: stdio MCP only
 - Minimum runtime: Node.js 22+
-- Current automated coverage: GitHub Actions `ubuntu-latest` lint, typecheck, test, and build plus fixture-backed service, adapter, and stdio MCP flows
+- Current automated coverage: GitHub Actions `ubuntu-latest` plus `windows-latest` lint, typecheck, test, and build plus fixture-backed service, adapter, and stdio MCP flows
 - Current real-environment coverage: Windows local smoke through `npm run smoke:real` and a Windows Codex Desktop acceptance pass
 - Current Codex Desktop checklist: `docs/codex-desktop-acceptance.md`
 - Current macOS position: unverified; keep release notes explicitly narrow until an actual macOS environment is exercised
@@ -31,6 +31,7 @@
 ## Smoke
 
 - Run `npm run smoke:real` on a workstation with real `claude` and `gemini` CLIs available.
+- Set `PARLEY_SMOKE_EVIDENCE_DIR=<dir>` when you want the smoke run to emit reusable release-evidence `.json` and `.md` artifacts alongside stdout output.
 - On Windows, prefer `%APPDATA%\\npm\\gemini.cmd` when that npm shim exists.
 - If Windows resolves Gemini only through `gemini.ps1`, set:
   - `PARLEY_GEMINI_COMMAND=powershell.exe`
@@ -38,8 +39,10 @@
 - Keep `PARLEY_PARTICIPANT_TIMEOUT_MS` and `PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES` at their intended release values during the smoke check.
 - Treat any `participant_failure` with `guardrail`, `timedOut`, or `outputLimitExceeded` details as a release blocker until the operator confirms the behavior is expected.
 - Treat `storage_failure` with `artifactType` or `failureKind` details as a release blocker until the damaged artifact path and replay boundary are understood.
+- If a timeout or launcher failure occurs during smoke, rerun with `PARLEY_SMOKE_KEEP_TEMP=1` so the persisted diagnostics remain available for inspection.
 - Record the participant launcher path actually used, the OS, the smoke date, and whether Gemini output was merely contract-valid or materially useful for operator review.
-- Copy the `participantLaunches`, `environment`, and `geminiUsefulness` fields from the smoke output into the active release-evidence note.
+- Prefer the generated `releaseEvidence` or `releaseEvidenceMarkdown` payload from smoke instead of manually reconstructing the note.
+- If `PARLEY_SMOKE_EVIDENCE_DIR` was set, attach the emitted `.json` and `.md` artifacts to the active release-evidence record.
 - If release review includes Codex Desktop support claims, run the checklist in `docs/codex-desktop-acceptance.md` alongside the smoke check.
 
 ## Rollout
