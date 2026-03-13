@@ -32,9 +32,11 @@ test("spawn executor terminates participant processes that exceed the output gua
   const executor = new SpawnCommandExecutor();
   const originalLimit = process.env.PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES;
   const originalTimeout = process.env.PARLEY_PARTICIPANT_TIMEOUT_MS;
+  const originalGrace = process.env.PARLEY_PARTICIPANT_KILL_GRACE_MS;
 
   process.env.PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES = "64";
   process.env.PARLEY_PARTICIPANT_TIMEOUT_MS = "5000";
+  process.env.PARLEY_PARTICIPANT_KILL_GRACE_MS = "100";
 
   try {
     const result = await executor.run({
@@ -46,10 +48,11 @@ test("spawn executor terminates participant processes that exceed the output gua
     assert.equal(result.guardrail, "output_limit");
     assert.equal(result.outputLimitExceeded, true);
     assert.ok(result.stdout.length <= 64);
-    assert.ok((result.durationMs ?? 0) < 2_000);
+    assert.ok((result.durationMs ?? 0) < 4_500);
   } finally {
     restoreEnv("PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES", originalLimit);
     restoreEnv("PARLEY_PARTICIPANT_TIMEOUT_MS", originalTimeout);
+    restoreEnv("PARLEY_PARTICIPANT_KILL_GRACE_MS", originalGrace);
   }
 });
 

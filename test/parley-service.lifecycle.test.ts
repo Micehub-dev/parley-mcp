@@ -5,6 +5,8 @@ import path from "node:path";
 import test from "node:test";
 
 import { ParleyError } from "../src/errors.js";
+import { createParticipantAdapters } from "../src/participants/adapters.js";
+import type { CommandExecutionInput, CommandExecutor } from "../src/participants/runtime.js";
 import { ParleyService } from "../src/services/parley-service.js";
 import { FileSystemStore } from "../src/storage/fs-store.js";
 import type { ParleyConfig, ParticipantKind, ParticipantResponse } from "../src/types.js";
@@ -332,6 +334,86 @@ test("advanceStep executes both participants, persists resume IDs, and finishes 
     assert.match(transcript, /Step 1 requested\. Nudge: Close the loop/);
     assert.match(transcript, /Claude responds with agreement\./);
     assert.match(transcript, /Gemini opens with a refinement\./);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("advanceStep commits Gemini responses that were normalized from labeled plain text", async () => {
+  const fixture = await createFixture(
+    createParticipantAdapters(
+      new SequencedCommandExecutor([
+        {
+          stdout: JSON.stringify({
+            response: [
+              "Stance: disagree",
+              "Summary: The release plan still needs a narrower support statement.",
+              "Arguments:",
+              "- Linux CI is helpful but is not a real-CLI smoke.",
+              "- macOS remains unverified.",
+              "Questions:",
+              "- Should the docs stay Windows-first for now?",
+              "Next step: Update the release docs and rerun the smoke path."
+            ].join("\n"),
+            sessionId: "gemini-session-2"
+          })
+        },
+        {
+          stdout: JSON.stringify({
+            result: JSON.stringify({
+              stance: "agree",
+              summary: "Claude agrees with narrowing the release statement.",
+              arguments: ["Claude wants the docs to match the evidence exactly."],
+              questions: [],
+              proposed_next_step: "Update the support-boundary docs."
+            }),
+            session_id: "claude-session-2"
+          })
+        }
+      ])
+    )
+  );
+
+  try {
+    const started = await fixture.service.startSession({
+      workspaceId: "default",
+      workspaceRoot: fixture.rootDir,
+      topic: "Normalized Gemini service path",
+      orchestrator: "codex",
+      orchestratorRunId: "run-021"
+    });
+    const lease = await fixture.service.claimLease({
+      parleySessionId: started.parleySessionId,
+      orchestratorRunId: "run-021",
+      ttlSeconds: 300
+    });
+
+    const step = await fixture.service.advanceStep({
+      parleySessionId: started.parleySessionId,
+      expectedStateVersion: lease.stateVersion,
+      orchestratorRunId: "run-021",
+      speakerOrder: ["gemini", "claude"]
+    });
+    const state = await fixture.service.getSessionState(started.parleySessionId);
+
+    assert.equal(step.responses.gemini.stance, "disagree");
+    assert.equal(
+      step.responses.gemini.summary,
+      "The release plan still needs a narrower support statement."
+    );
+    assert.deepEqual(step.responses.gemini.arguments, [
+      "Linux CI is helpful but is not a real-CLI smoke.",
+      "macOS remains unverified."
+    ]);
+    assert.deepEqual(step.responses.gemini.questions, [
+      "Should the docs stay Windows-first for now?"
+    ]);
+    assert.equal(
+      step.responses.gemini.proposed_next_step,
+      "Update the release docs and rerun the smoke path."
+    );
+    assert.equal(state.participants.gemini.resumeId, "gemini-session-2");
+    assert.equal(state.participants.claude.resumeId, "claude-session-2");
   } finally {
     await fixture.cleanup();
   }
@@ -1412,6 +1494,31 @@ class FaultyDiagnosticStore extends FileSystemStore {
     _payload: unknown
   ): Promise<string> {
     throw new Error("Simulated diagnostic write failure.");
+  }
+}
+
+class SequencedCommandExecutor implements CommandExecutor {
+  constructor(
+    private readonly responses: Array<{
+      stdout: string;
+      stderr?: string;
+      exitCode?: number | null;
+    }>
+  ) {}
+
+  async run(input: CommandExecutionInput) {
+    const response = this.responses.shift();
+    if (!response) {
+      throw new Error("No fake subprocess response was configured.");
+    }
+
+    return {
+      command: input.command,
+      args: input.args,
+      stdout: response.stdout,
+      stderr: response.stderr ?? "",
+      exitCode: response.exitCode ?? 0
+    };
   }
 }
 

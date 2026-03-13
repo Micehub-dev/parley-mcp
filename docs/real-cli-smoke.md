@@ -47,6 +47,10 @@ Use these only when the release runbook explicitly calls for a different product
 Observed on 2026-03-13 in a Windows local environment:
 
 - `claude.exe` resolved directly from `PATH`
-- Parley resolved Gemini through the npm-installed `gemini.cmd` shim under `%APPDATA%\\npm`
+- PowerShell surfaced `gemini.ps1`, but Parley resolved Gemini through the npm-installed `gemini.cmd` shim under `%APPDATA%\\npm`
 - `npm run smoke:real` completed successfully with `ok: true`, one committed turn, and a finish-time `conclusion`
-- Gemini still may return weaker or less structured content than Claude, but the adapter now normalizes common plain-text and non-enum-shape responses into the shared participant contract
+- Gemini still may return weaker or less structured content than Claude, but the adapter now normalizes common fenced JSON, labeled plain-text, and partial JSON responses into the shared participant contract when safe
+
+Linux note:
+
+- Current Linux evidence is automated CI on `ubuntu-latest`; this document does not claim a Linux real-CLI smoke until an actual Linux participant run is exercised.

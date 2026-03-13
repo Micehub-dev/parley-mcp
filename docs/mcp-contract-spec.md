@@ -9,6 +9,7 @@ This document tracks the implemented MCP contract for the current runtime.
 - Sprint 6 resume/lease verification hardening and additive repair-action hints are now implemented.
 - Sprint 7 diagnostics access hardening now redacts diagnostic records by default and keeps full detail behind explicit opt-in.
 - Sprint 8 subprocess guardrails and corrupted-artifact visibility are now implemented.
+- Sprint 9 Gemini normalization now recovers common fenced JSON, labeled plain-text, and partial JSON response shapes without widening the shared contract.
 - Compatibility string fields remain in place so existing orchestrators can migrate additively.
 - The design rationale and frozen migration rules still live in `docs/decisions/ADR-0001-sprint-4-synthesis-contract.md`.
 
@@ -96,6 +97,11 @@ Error messages include the code in a machine-visible form such as `[lease_confli
   "proposed_next_step": "next action"
 }
 ```
+
+Behavior notes:
+
+- The shared contract shape is unchanged even when participant-specific normalization is applied underneath it.
+- Gemini-side adapter hardening now strips surrounding markdown fences, parses labeled plain-text sections, and maps common alternate field names or string-list fields when they can be recovered safely.
 
 ### `RollingSummary`
 
@@ -289,6 +295,7 @@ Behavior notes:
 - If a lease exists but has expired, `parley_step` returns `[lease_conflict]` until an orchestrator reclaims the lease through `parley_claim_lease`.
 - Participant responses are appended to `transcript.jsonl` and mirrored in `state.latestTurn` on success.
 - Resume IDs are persisted under `state.participants` when the participant runtime returns them.
+- Gemini normalization remains additive to `parley_step`; recoverable output-shape cleanup happens inside the adapter and still resolves to the same shared `ParticipantResponse` contract.
 - `rollingSummary` is persisted only after a successful committed turn.
 - If session state save fails after participant execution, `parley_step` returns `[storage_failure]` with `details.stateCommitted = false`; the same version may be retried.
 - If transcript append fails after session state save, `parley_step` returns `[storage_failure]` with `details.stateCommitted = true`; orchestrators should call `parley_state` before retrying.
