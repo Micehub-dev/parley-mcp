@@ -150,7 +150,7 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 - macOS remains unverified; keep support wording narrow until an actual macOS environment is exercised
 - `npm run smoke:real` now defaults to a release-oriented production-readiness prompt and records `participantLaunches`, `geminiUsefulness`, `releaseEvidence`, and `releaseEvidenceMarkdown` in its output
 - Set `PARLEY_SMOKE_EVIDENCE_DIR` to write reusable release-evidence `.json` and `.md` artifacts directly from the smoke workflow
-- Current next-step focus is to keep the Windows and Linux CI matrix green, rerun Windows real smoke whenever launcher or authentication behavior changes, and add exercised Linux evidence only when a real Linux participant environment is available
+- Current next-step focus is to add a read-only workspace-scoped file-reading MCP tool, keep the Windows and Linux CI matrix green, rerun Windows real smoke whenever launcher or authentication behavior changes, and add exercised Linux evidence only when a real Linux participant environment is available
 - Default participant guardrails:
   - `PARLEY_PARTICIPANT_TIMEOUT_MS=120000`
   - `PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES=1000000`
@@ -173,6 +173,7 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 
 ## Roadmap
 
+- Add a read-only workspace-scoped file-reading MCP tool so orchestrators can safely share workspace file context through Parley without granting arbitrary filesystem access
 - Keep the Windows and Linux CI matrix green for the current release-validation bar
 - Use generated release-evidence artifacts directly from the smoke workflow during release review
 - Revalidate Gemini operator usefulness in real smoke without widening the shared participant contract

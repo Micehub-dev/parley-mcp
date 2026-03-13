@@ -37,6 +37,7 @@ As of 2026-03-13, the repository is beyond the bootstrap, placeholder, and runti
 - Gemini normalization now recovers common fenced JSON, labeled plain-text, and partial JSON response shapes without widening the shared participant contract.
 - Sprint 10 usefulness hardening now adds stronger anti-fallback participant prompting, targeted regression coverage, and smoke-time usefulness classification without widening the shared participant contract.
 - Sprint 11 usefulness hardening now infers topic-specific next steps from some plain-text Gemini prose and classifies thin default-next-step replies more strictly during release review.
+- Gemini CLI schema-enforcement follow-up is now explicitly tracked against `google-gemini/gemini-cli` PR `#18032`; once that capability is stable in a released CLI and revalidated in Windows real smoke, Parley should replace prompt-only schema steering and part of the current Gemini fallback normalization path with the CLI flag-based contract.
 - The release smoke path now emits launcher metadata, a reusable release-evidence note payload, and optional `.json` plus `.md` artifacts when requested.
 - A repeatable Codex Desktop acceptance checklist now exists for release review and operator verification.
 - The latest local Codex-run smoke attempt on 2026-03-13 hit a Gemini timeout on the current workstation, so Sprint 11 remains in progress until real smoke is rerun cleanly.
@@ -507,6 +508,7 @@ Done when:
 
 ### Work That Should Happen Now
 
+- add a read-only workspace-scoped file-reading MCP tool so orchestrators can pass absolute or workspace-relative file context through Parley without opening arbitrary filesystem access
 - keep Windows automation parity green so the Windows-first real-operator path is not guarded only by manual smoke
 - reduce manual release-review work by using generated release evidence directly from the smoke workflow
 - improve Gemini operator usefulness in real smoke without widening the shared participant contract
@@ -571,11 +573,12 @@ Mitigation:
 
 ### Next Implementation Priority
 
-1. Confirm the new Windows automation lane on a remote GitHub Actions run so the Windows-first real-operator path is covered by CI as well as manual smoke.
-2. Use generated release evidence directly from the smoke workflow so maintainers do not manually reconstruct launcher, environment, and usefulness facts during release review.
-3. Keep Gemini operator usefulness reviewable through smoke-time classification, plain-text next-step recovery, and regression coverage while preserving the shared participant contract.
-4. Expand real-CLI and OS verification beyond the current Windows-first statement only when additional environments are actually exercised.
-5. Treat Linux and macOS verification as separate evidence tracks; CI is acceptable Linux automation evidence, but do not claim macOS stability without an actual macOS run.
-6. Keep the Codex Desktop acceptance path, smoke evidence, test matrix, release-evidence template, and runbook aligned whenever release or installation behavior changes.
-7. Revisit packaging direction only after the Sprint 11 production-use evidence bar stays stable.
-8. Consider stronger access policy options only if diagnostics move beyond local operator use.
+1. Add a read-only workspace-scoped file-reading MCP tool that accepts an absolute or workspace-relative path but enforces `session.workspaceRoot` containment, text-only reads, and predictable truncation metadata.
+2. Confirm the new Windows automation lane on a remote GitHub Actions run so the Windows-first real-operator path is covered by CI as well as manual smoke.
+3. Use generated release evidence directly from the smoke workflow so maintainers do not manually reconstruct launcher, environment, and usefulness facts during release review.
+4. Keep Gemini operator usefulness reviewable through smoke-time classification, plain-text next-step recovery, and regression coverage while preserving the shared participant contract.
+5. Expand real-CLI and OS verification beyond the current Windows-first statement only when additional environments are actually exercised.
+6. Treat Linux and macOS verification as separate evidence tracks; CI is acceptable Linux automation evidence, but do not claim macOS stability without an actual macOS run.
+7. Keep the Codex Desktop acceptance path, smoke evidence, test matrix, release-evidence template, and runbook aligned whenever release or installation behavior changes.
+8. Revisit packaging direction only after the Sprint 11 production-use evidence bar stays stable.
+9. Consider stronger access policy options only if diagnostics move beyond local operator use or the new file-reading surface needs additional policy controls.
