@@ -38,6 +38,7 @@ As of 2026-03-13, the repository is beyond the bootstrap, placeholder, and runti
 - Sprint 10 usefulness hardening now adds stronger anti-fallback participant prompting, targeted regression coverage, and smoke-time usefulness classification without widening the shared participant contract.
 - Sprint 11 usefulness hardening now infers topic-specific next steps from some plain-text Gemini prose and classifies thin default-next-step replies more strictly during release review.
 - The release smoke path now emits launcher metadata, a reusable release-evidence note payload, and optional `.json` plus `.md` artifacts when requested.
+- Gemini CLI schema-enforcement follow-up is now explicitly tracked against `google-gemini/gemini-cli` PR `#18032`; once that capability is stable in a released CLI and revalidated in Windows real smoke, Parley should replace prompt-only schema steering and part of the current Gemini fallback normalization path with the CLI flag-based contract.
 - A repeatable Codex Desktop acceptance checklist now exists for release review and operator verification.
 - The latest local Codex-run smoke attempt on 2026-03-13 hit a Gemini timeout on the current workstation, so Sprint 11 remains in progress until real smoke is rerun cleanly.
 
