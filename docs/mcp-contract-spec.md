@@ -8,6 +8,7 @@ This document tracks the implemented MCP contract for the current runtime.
 - Sprint 5 search, workspace-board retrieval, and diagnostic inspection surfaces are now implemented.
 - Sprint 6 resume/lease verification hardening and additive repair-action hints are now implemented.
 - Sprint 7 diagnostics access hardening now redacts diagnostic records by default and keeps full detail behind explicit opt-in.
+- Sprint 8 subprocess guardrails and corrupted-artifact visibility are now implemented.
 - Compatibility string fields remain in place so existing orchestrators can migrate additively.
 - The design rationale and frozen migration rules still live in `docs/decisions/ADR-0001-sprint-4-synthesis-contract.md`.
 
@@ -170,6 +171,7 @@ Possible errors:
 
 - `invalid_argument`: disallowed participant model
 - `not_found`: linked `topicId` does not exist
+- `storage_failure`: linked topic artifacts or new session artifacts could not be read or written safely
 
 ### `parley_state`
 
@@ -192,6 +194,7 @@ Output:
 Possible errors:
 
 - `not_found`: session does not exist
+- `storage_failure`: the persisted session artifact exists but is unreadable or invalid
 
 ### `parley_claim_lease`
 
@@ -282,6 +285,7 @@ Behavior notes:
 - `parley_step` validates both participant outputs before committing the turn.
 - If either participant fails process execution or output validation, the step fails with `[participant_failure]`, the turn is not persisted, and diagnostics are written under `.multi-llm/sessions/{sessionId}/diagnostics/`.
 - `participant_failure` includes `details.reason` (`process_error` or `invalid_output`), `details.retryable`, and `details.diagnosticsPersisted`.
+- Guardrail-triggered process failures may also include `details.guardrail`, `details.timedOut`, `details.outputLimitExceeded`, `details.durationMs`, and `details.signal`.
 - If a lease exists but has expired, `parley_step` returns `[lease_conflict]` until an orchestrator reclaims the lease through `parley_claim_lease`.
 - Participant responses are appended to `transcript.jsonl` and mirrored in `state.latestTurn` on success.
 - Resume IDs are persisted under `state.participants` when the participant runtime returns them.
@@ -375,6 +379,7 @@ Implemented tools:
 Behavior notes:
 
 - Topic records are filesystem-backed and human-debuggable.
+- Topic, session, and diagnostic read paths now distinguish missing artifacts from invalid JSON and unreadable directories/files.
 - Topics may be linked to sessions through `topicId` at session creation time.
 - Promoted knowledge is stored directly on the existing `TopicRecord` shape rather than in a separate opaque index.
 - `parley_list_topics` now searches promoted memory additively rather than limiting `query` to `title` and `body`.
@@ -527,7 +532,10 @@ Output:
           "args": ["[redacted 3 args]"],
           "stdout": "[redacted 120 chars]",
           "stderr": "[redacted 42 chars]",
-          "exitCode": 17
+          "exitCode": 17,
+          "durationMs": 10423,
+          "guardrail": "timeout",
+          "timedOut": true
         },
         "redaction": {
           "detailLevel": "redacted",
@@ -561,6 +569,7 @@ Behavior notes:
 - Filtering is additive and filesystem-backed.
 - `record` is a read-time view rather than a guarantee of the raw persisted JSON payload.
 - `detailLevel = redacted` hides raw subprocess command, args, stdout, stderr, resume IDs, structured participant responses, and user nudges from the MCP response.
+- non-sensitive runtime metadata such as `durationMs`, `signal`, `guardrail`, `timedOut`, and `outputLimitExceeded` remain visible in both redacted and full diagnostic views.
 - `detailLevel = full` returns the unredacted diagnostic record shape for intentional local operator debugging.
 - `repairGuidance.canRetrySameVersion = false` together with `shouldReadStateFirst = true` signals the replay-boundary case where session state may already be committed.
 - `repairGuidance.nextAction` is additive helper output derived from the diagnostic record; it does not introduce new session state.

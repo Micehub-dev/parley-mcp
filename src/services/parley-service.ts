@@ -4,7 +4,8 @@ import { ParleyError } from "../errors.js";
 import { participantResponseSchema } from "../participants/schema.js";
 import type { ParticipantRawExecution } from "../participants/types.js";
 import type { ParticipantAdapterRegistry } from "../participants/types.js";
-import { FileSystemStore } from "../storage/fs-store.js";
+import type { ParticipantExecutionFailure } from "../participants/types.js";
+import { FileSystemStore, isFileSystemStoreError } from "../storage/fs-store.js";
 import type {
   DiagnosticDetailLevel,
   DiagnosticRepairAction,
@@ -106,7 +107,7 @@ export class ParleyService {
     const sessionId = createId("parley");
 
     if (input.topicId) {
-      const topicRecord = await this.store.getTopic(input.workspaceId, input.topicId);
+      const topicRecord = await this.getTopicRecord(input.workspaceId, input.topicId);
       if (!topicRecord) {
         throw new ParleyError("not_found", `Topic not found: ${input.topicId}`, {
           topicId: input.topicId
@@ -149,14 +150,22 @@ export class ParleyService {
       }
     ];
 
-    await this.store.createSession(state, transcript);
+    try {
+      await this.store.createSession(state, transcript);
+    } catch (error) {
+      this.rethrowStorageFailure(error, "Failed to create session artifacts.");
+    }
 
     if (input.topicId) {
-      const topicRecord = await this.store.getTopic(input.workspaceId, input.topicId);
+      const topicRecord = await this.getTopicRecord(input.workspaceId, input.topicId);
       if (topicRecord) {
         topicRecord.linkedSessionIds = [...new Set([...topicRecord.linkedSessionIds, sessionId])];
         topicRecord.updatedAt = now;
-        await this.store.updateTopic(topicRecord);
+        try {
+          await this.store.updateTopic(topicRecord);
+        } catch (error) {
+          this.rethrowStorageFailure(error, "Failed to link the created session back to its topic.");
+        }
       }
     }
 
@@ -173,7 +182,13 @@ export class ParleyService {
   }
 
   async getSessionState(sessionId: string): Promise<ParleySessionState> {
-    const state = await this.store.getSession(sessionId);
+    let state: ParleySessionState | null;
+    try {
+      state = await this.store.getSession(sessionId);
+    } catch (error) {
+      this.rethrowStorageFailure(error, "Failed to read session state.");
+    }
+
     if (!state) {
       throw new ParleyError("not_found", `Session not found: ${sessionId}`, {
         parleySessionId: sessionId
@@ -207,7 +222,11 @@ export class ParleyService {
     state.lastWriter = input.orchestratorRunId;
     state.updatedAt = now.toISOString();
 
-    await this.store.saveSession(state);
+    try {
+      await this.store.saveSession(state);
+    } catch (error) {
+      this.rethrowStorageFailure(error, "Failed to persist the claimed lease.");
+    }
 
     return {
       leaseOwner: state.leaseOwner,
@@ -302,13 +321,7 @@ export class ParleyService {
         throw new ParleyError(
           "participant_failure",
           `${participant} failed during parley_step: ${result.message}`,
-          {
-            participant,
-            reason: result.reason,
-            retryable: result.reason === "process_error",
-            diagnosticsPersisted,
-            ...(typeof result.raw.exitCode === "number" ? { exitCode: result.raw.exitCode } : {})
-          }
+          this.buildParticipantFailureDetails(participant, result, diagnosticsPersisted)
         );
       }
 
@@ -504,7 +517,11 @@ export class ParleyService {
     }
     state.orchestratorAuditLog = this.markAuditCompleted(state.orchestratorAuditLog, now);
 
-    await this.store.saveSession(state);
+    try {
+      await this.store.saveSession(state);
+    } catch (error) {
+      this.rethrowStorageFailure(error, "Failed to persist the finished session.");
+    }
 
     return this.buildFinishResponse(state);
   }
@@ -533,7 +550,7 @@ export class ParleyService {
       );
     }
 
-    const topic = await this.store.getTopic(state.workspaceId, resolvedTopicId);
+    const topic = await this.getTopicRecord(state.workspaceId, resolvedTopicId);
     if (!topic) {
       throw new ParleyError("not_found", `Topic not found: ${resolvedTopicId}`, {
         topicId: resolvedTopicId
@@ -594,7 +611,11 @@ export class ParleyService {
 
     if (changed) {
       nextTopic.updatedAt = new Date().toISOString();
-      await this.store.updateTopic(nextTopic);
+      try {
+        await this.store.updateTopic(nextTopic);
+      } catch (error) {
+        this.rethrowStorageFailure(error, "Failed to persist promoted topic memory.");
+      }
     }
 
     return {
@@ -609,7 +630,12 @@ export class ParleyService {
     workspaceId: string;
     results: TopicSearchResult[];
   }> {
-    const topics = await this.store.listTopics(input.workspaceId);
+    let topics: TopicRecord[];
+    try {
+      topics = await this.store.listTopics(input.workspaceId);
+    } catch (error) {
+      this.rethrowStorageFailure(error, "Failed to read workspace topics.");
+    }
     const normalizedTags = this.normalizeTags(input.tags);
     const queryTokens = this.tokenizeSearchQuery(input.query);
     const limit = input.limit ?? 20;
@@ -642,7 +668,12 @@ export class ParleyService {
   }
 
   async getWorkspaceBoard(input: GetWorkspaceBoardInput): Promise<WorkspaceBoard> {
-    const topics = await this.store.listTopics(input.workspaceId);
+    let topics: TopicRecord[];
+    try {
+      topics = await this.store.listTopics(input.workspaceId);
+    } catch (error) {
+      this.rethrowStorageFailure(error, "Failed to build the workspace board from persisted topics.");
+    }
     const limit = input.limit ?? 10;
     const board = {
       open: [] as TopicBoardCard[],
@@ -709,7 +740,12 @@ export class ParleyService {
     await this.getSessionState(input.parleySessionId);
 
     const detailLevel = input.detailLevel ?? "redacted";
-    const diagnostics = await this.store.listSessionDiagnostics(input.parleySessionId);
+    let diagnostics: Array<{ diagnosticId: string; record: SessionDiagnosticRecord }>;
+    try {
+      diagnostics = await this.store.listSessionDiagnostics(input.parleySessionId);
+    } catch (error) {
+      this.rethrowStorageFailure(error, "Failed to read persisted diagnostics.");
+    }
     const filtered = diagnostics
       .filter(({ record }) => (input.outcome ? record.outcome === input.outcome : true))
       .filter(({ record }) =>
@@ -1150,6 +1186,40 @@ export class ParleyService {
       const hasProcessFailure = failedParticipants.some(
         (participant) => participant.failureKind === "process_error"
       );
+      const timeoutFailure = failedParticipants.find(
+        (participant) => participant.raw.guardrail === "timeout"
+      );
+      const outputLimitFailure = failedParticipants.find(
+        (participant) => participant.raw.guardrail === "output_limit"
+      );
+
+      if (timeoutFailure) {
+        return {
+          summary: "Participant execution timed out before the turn was committed.",
+          recommendedSteps: [
+            "Inspect the participant command, prompt size, and CLI health to understand why execution stalled.",
+            "Increase PARLEY_PARTICIPANT_TIMEOUT_MS only if the longer runtime is expected and safe for this workload.",
+            "Retry parley_step with the same expectedStateVersion after confirming the stalled turn was not committed."
+          ],
+          canRetrySameVersion: record.stateCommitStatus === "not_committed",
+          shouldReadStateFirst: false,
+          nextAction: this.buildRepairAction(record)
+        };
+      }
+
+      if (outputLimitFailure) {
+        return {
+          summary: "Participant execution exceeded the configured output limit before the turn was committed.",
+          recommendedSteps: [
+            "Inspect the participant prompt and CLI behavior to understand why the response over-produced output.",
+            "Raise PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES only if the larger payload is intentional and safe to retain.",
+            "Retry parley_step with the same expectedStateVersion after the noisy participant behavior is corrected."
+          ],
+          canRetrySameVersion: record.stateCommitStatus === "not_committed",
+          shouldReadStateFirst: false,
+          nextAction: this.buildRepairAction(record)
+        };
+      }
 
       return {
         summary: hasProcessFailure
@@ -1320,13 +1390,7 @@ export class ParleyService {
         participant: participant.participant,
         model: participant.model,
         status: participant.status,
-        raw: {
-          command: participant.raw.command,
-          args: [...participant.raw.args],
-          stdout: participant.raw.stdout,
-          stderr: participant.raw.stderr,
-          exitCode: participant.raw.exitCode
-        },
+        raw: this.renderDiagnosticRaw(participant.raw, detailLevel),
         ...(participant.resumeId ? { resumeId: participant.resumeId } : {}),
         ...(participant.response ? { response: participant.response } : {}),
         ...(participant.failureKind ? { failureKind: participant.failureKind } : {}),
@@ -1350,14 +1414,7 @@ export class ParleyService {
       participant: participant.participant,
       model: participant.model,
       status: participant.status,
-      raw: {
-        command: "[redacted]",
-        args:
-          participant.raw.args.length > 0 ? [`[redacted ${participant.raw.args.length} args]`] : [],
-        stdout: this.describeRedactedText(participant.raw.stdout),
-        stderr: this.describeRedactedText(participant.raw.stderr),
-        exitCode: participant.raw.exitCode
-      },
+      raw: this.renderDiagnosticRaw(participant.raw, detailLevel),
       ...(participant.failureKind ? { failureKind: participant.failureKind } : {}),
       ...(participant.message ? { message: participant.message } : {}),
       ...(typeof participant.retryable === "boolean"
@@ -1376,6 +1433,78 @@ export class ParleyService {
     }
 
     return `[redacted ${value.length} chars]`;
+  }
+
+  private async getTopicRecord(workspaceId: string, topicId: string): Promise<TopicRecord | null> {
+    try {
+      return await this.store.getTopic(workspaceId, topicId);
+    } catch (error) {
+      this.rethrowStorageFailure(error, "Failed to read topic state.");
+    }
+  }
+
+  private buildParticipantFailureDetails(
+    participant: ParticipantKind,
+    result: ParticipantExecutionFailure,
+    diagnosticsPersisted: boolean
+  ) {
+    return {
+      participant,
+      reason: result.reason,
+      retryable: result.reason === "process_error",
+      diagnosticsPersisted,
+      ...(typeof result.raw.exitCode === "number" ? { exitCode: result.raw.exitCode } : {}),
+      ...(result.raw.signal ? { signal: result.raw.signal } : {}),
+      ...(typeof result.raw.durationMs === "number" ? { durationMs: result.raw.durationMs } : {}),
+      ...(result.raw.timedOut ? { timedOut: true } : {}),
+      ...(result.raw.outputLimitExceeded ? { outputLimitExceeded: true } : {}),
+      ...(result.guardrail ? { guardrail: result.guardrail } : {})
+    };
+  }
+
+  private rethrowStorageFailure(error: unknown, message: string): never {
+    if (isFileSystemStoreError(error)) {
+      throw new ParleyError("storage_failure", message, {
+        artifactType: error.artifactType,
+        artifactPath: error.artifactPath,
+        failureKind: error.code
+      });
+    }
+
+    throw error;
+  }
+
+  private renderDiagnosticRaw(
+    raw: ParticipantRawExecution,
+    detailLevel: DiagnosticDetailLevel
+  ): SessionDiagnosticParticipantView["raw"] {
+    if (detailLevel === "full") {
+      return {
+        command: raw.command,
+        args: [...raw.args],
+        stdout: raw.stdout,
+        stderr: raw.stderr,
+        exitCode: raw.exitCode,
+        ...(raw.signal ? { signal: raw.signal } : {}),
+        ...(typeof raw.durationMs === "number" ? { durationMs: raw.durationMs } : {}),
+        ...(raw.timedOut ? { timedOut: true } : {}),
+        ...(raw.outputLimitExceeded ? { outputLimitExceeded: true } : {}),
+        ...(raw.guardrail ? { guardrail: raw.guardrail } : {})
+      };
+    }
+
+    return {
+      command: "[redacted]",
+      args: raw.args.length > 0 ? [`[redacted ${raw.args.length} args]`] : [],
+      stdout: this.describeRedactedText(raw.stdout),
+      stderr: this.describeRedactedText(raw.stderr),
+      exitCode: raw.exitCode,
+      ...(raw.signal ? { signal: raw.signal } : {}),
+      ...(typeof raw.durationMs === "number" ? { durationMs: raw.durationMs } : {}),
+      ...(raw.timedOut ? { timedOut: true } : {}),
+      ...(raw.outputLimitExceeded ? { outputLimitExceeded: true } : {}),
+      ...(raw.guardrail ? { guardrail: raw.guardrail } : {})
+    };
   }
 
   private assertActiveSession(state: ParleySessionState) {

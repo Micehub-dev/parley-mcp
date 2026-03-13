@@ -10,6 +10,7 @@
     "dev": "tsx src/index.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "smoke:real": "node scripts/real-cli-smoke.mjs",
     "test": "tsx --test test/**/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

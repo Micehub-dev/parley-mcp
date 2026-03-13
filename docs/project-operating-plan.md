@@ -28,9 +28,12 @@ As of 2026-03-13, the repository is beyond the bootstrap, placeholder, and runti
 - Promoted topic memory is now searchable through dedicated MCP tooling.
 - Workspace boards and operator-facing diagnostic inspection are now exposed through MCP tools.
 - Diagnostic inspection now returns redacted records by default with explicit full-detail opt-in.
+- Participant subprocesses now enforce timeout, kill-grace, and output-size guardrails.
+- JSON-backed artifacts now write through atomic temp-file replacement and surface explicit corruption/readability failures on read paths.
+- A release-oriented real CLI smoke workflow and runbook baseline now exist for production-readiness review.
 - Automated coverage exists at the service, adapter, and stdio MCP integration layers.
 
-Sprint 6 hardening is now functionally complete ahead of the original calendar window. Sprint 7 closes the immediate diagnostics access gap, and Sprint 8 is planned as a production-readiness hardening pass before packaging direction is revisited.
+Sprint 6 hardening is now functionally complete ahead of the original calendar window. Sprint 7 closed the immediate diagnostics access gap, and Sprint 8 has now landed the intended production-readiness hardening pass before packaging direction is revisited.
 
 ## 2. Working Source Of Truth
 
@@ -314,13 +317,13 @@ Goal:
 
 Status:
 
-- Planned
+- Functionally complete as of 2026-03-13
 
-Planned scope:
+Delivered scope:
 
 - subprocess guardrails for participant runtime execution
 - stronger durability and corruption visibility for filesystem-backed artifacts
-- real CLI and broader OS verification beyond the current fixture-heavy confidence bar
+- real CLI smoke workflow plus a clearer Windows-first OS support statement
 - release ownership, preflight, rollback, and runbook hardening
 
 ## 7. Epic View
@@ -396,9 +399,9 @@ Done when:
 
 ### Work That Should Happen Now
 
-- keep the Sprint 7 diagnostics redaction boundary stable in CI while Sprint 8 production-readiness work lands
-- harden participant subprocess guardrails and filesystem durability before broadening distribution
-- define a clearer real-CLI and OS support position plus release ownership/runbook expectations
+- keep the Sprint 8 subprocess guardrails, corruption visibility, and diagnostics redaction boundaries green in CI
+- rerun the real-CLI smoke path before intentional release review and record any environment caveats
+- keep release ownership, support-boundary docs, and rollback guidance aligned with runtime reality
 
 ### Work That Should Happen Soon After
 
@@ -456,8 +459,8 @@ Mitigation:
 
 ### Next Implementation Priority
 
-1. Keep the diagnostics redaction and full-detail opt-in paths green while Sprint 8 runtime hardening begins.
-2. Harden participant subprocess controls and filesystem durability before claiming broader production readiness.
-3. Expand real-CLI and OS verification enough to support a clear support statement and release runbook.
+1. Keep the diagnostics redaction and full-detail opt-in paths green while Sprint 8 runtime hardening stays stable.
+2. Keep participant subprocess controls and filesystem durability stable now that the production-readiness bar is implemented.
+3. Expand real-CLI and OS verification beyond the current Windows-first statement only when additional environments are actually exercised.
 4. Revisit packaging direction only after the Sprint 8 hardening bar stays stable.
 5. Consider stronger access policy options only if diagnostics move beyond local operator use.

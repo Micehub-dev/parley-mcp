@@ -1,4 +1,10 @@
-import type { ParleySessionState, ParticipantKind, ParticipantResponse } from "../types.js";
+import type {
+  ParleySessionState,
+  ParticipantKind,
+  ParticipantProcessGuardrail,
+  ParticipantRawExecution as SharedParticipantRawExecution,
+  ParticipantResponse
+} from "../types.js";
 
 export interface ParticipantAdapterInput {
   session: ParleySessionState;
@@ -11,13 +17,7 @@ export interface ParticipantAdapterInput {
   userNudge?: string;
 }
 
-export interface ParticipantRawExecution {
-  command: string;
-  args: string[];
-  stdout: string;
-  stderr: string;
-  exitCode: number | null;
-}
+export type ParticipantRawExecution = SharedParticipantRawExecution;
 
 export interface ParticipantExecutionSuccess {
   ok: true;
@@ -33,6 +33,7 @@ export interface ParticipantExecutionFailure {
   reason: "invalid_output" | "process_error";
   message: string;
   raw: ParticipantRawExecution;
+  guardrail?: ParticipantProcessGuardrail;
 }
 
 export type ParticipantExecutionResult = ParticipantExecutionSuccess | ParticipantExecutionFailure;
