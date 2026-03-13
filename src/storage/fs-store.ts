@@ -3,6 +3,7 @@ import path from "node:path";
 
 import type {
   ParleySessionState,
+  SessionDiagnosticRecord,
   TopicRecord,
   TranscriptEntry,
   WorkspaceRecord
@@ -115,6 +116,45 @@ export class FileSystemStore {
     const diagnosticPath = path.join(diagnosticsDir, `${diagnosticId}.json`);
     await writeJson(diagnosticPath, payload);
     return diagnosticPath;
+  }
+
+  async listSessionDiagnostics(
+    sessionId: string
+  ): Promise<Array<{ diagnosticId: string; record: SessionDiagnosticRecord }>> {
+    const diagnosticsDir = path.join(this.dataRoot, "sessions", sessionId, "diagnostics");
+    const entries = await safeReadDir(diagnosticsDir);
+    const diagnostics: Array<{ diagnosticId: string; record: SessionDiagnosticRecord }> = [];
+
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) {
+        continue;
+      }
+
+      const record = await readJson<SessionDiagnosticRecord>(
+        path.join(diagnosticsDir, entry.name)
+      );
+      if (!record) {
+        continue;
+      }
+
+      diagnostics.push({
+        diagnosticId: entry.name.replace(/\.json$/u, ""),
+        record
+      });
+    }
+
+    return diagnostics.sort((left, right) =>
+      right.record.completedAt.localeCompare(left.record.completedAt)
+    );
+  }
+
+  async getSessionDiagnostic(
+    sessionId: string,
+    diagnosticId: string
+  ): Promise<SessionDiagnosticRecord | null> {
+    return readJson<SessionDiagnosticRecord>(
+      path.join(this.dataRoot, "sessions", sessionId, "diagnostics", `${diagnosticId}.json`)
+    );
   }
 
   async updateTopic(record: TopicRecord): Promise<void> {

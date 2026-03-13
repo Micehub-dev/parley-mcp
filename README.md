@@ -27,12 +27,15 @@ Most AI tooling gets trapped inside one client surface. Parley takes the opposit
 - Orchestrator-agnostic MCP server
 - Filesystem-backed workspace, topic, and parley session storage
 - Lease and `stateVersion` primitives for safe concurrent orchestration
-- Structured tool surface for topic creation, session start, state lookup, lease claiming, and session progression
+- Structured tool surface for topic creation, search, board retrieval, session start, state lookup, lease claiming, diagnostics inspection, and session progression
 - TypeScript + Zod-based validation for predictable inputs and outputs
 - Real `claude` and `gemini` subprocess adapter boundary with shared structured output validation
 - Resume ID persistence and last-turn response snapshots for multi-step session continuation
 - Rolling summary accumulation across successful turns
 - Structured finish-time conclusions and explicit topic promotion into workspace memory
+- Topic-memory search across promoted summaries, open questions, action items, and tags
+- Workspace board digests for status-oriented topic retrieval
+- Operator-facing diagnostic inspection with replay and repair guidance
 
 ## Architecture
 
@@ -51,7 +54,7 @@ flowchart LR
 
 ## Current Status
 
-The repository is currently at the **knowledge synthesis and topic-promotion** stage.
+The repository is currently at the **operator-tooling and knowledge-layer expansion** stage.
 
 - MCP server skeleton and core session lifecycle are implemented
 - Filesystem-backed storage is implemented
@@ -60,10 +63,13 @@ The repository is currently at the **knowledge synthesis and topic-promotion** s
 - Session state also persists a structured `rollingSummary` for downstream orchestration and promotion
 - `parley_finish` returns a structured `conclusion` while keeping `summary` as a compatibility field
 - `parley_promote_summary` promotes finished-session conclusions into linked topic memory
+- `parley_search_topics` retrieves promoted topic memory across summaries, questions, actions, and tags
+- `parley_get_workspace_board` exposes board-style workspace digests for downstream clients
+- `parley_list_diagnostics` exposes failed step diagnostics with operator repair guidance
 - Structured MCP tool errors now return machine-readable JSON envelopes with `isError: true`
 - Failed participant attempts persist debug-friendly diagnostics under `.multi-llm/sessions/<sessionId>/diagnostics/`
-- Service and adapter tests cover happy-path execution and key failure modes
-- Stdio MCP integration coverage now exercises `start -> claim_lease -> step -> finish -> promote`
+- Service and adapter tests cover happy-path execution, retrieval, diagnostics, and key failure modes
+- Stdio MCP integration coverage now exercises `start -> claim_lease -> step -> finish -> promote -> search -> board`
 - CI is configured for install, lint, test, typecheck, and build
 
 ## Repository Layout
@@ -127,7 +133,8 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 
 ## Roadmap
 
-- Expand topic boards, workspace search, and operator tooling
+- Refine topic-memory quality and repair ergonomics on top of the stable Sprint 5 surface
+- Broaden orchestrator verification beyond the current Windows-first matrix
 - Package thin surfaces for plugins, extensions, and future UI layers
 
 ## Use Cases

@@ -9,6 +9,10 @@
 
 - Turn promoted session knowledge into something operators and orchestrators can reliably find, inspect, and validate through search, board-style retrieval, and broader end-to-end verification.
 
+## Status
+
+- Functionally complete as of 2026-03-13
+
 ## Why This Sprint Now
 
 - Sprint 4 created reusable topic memory through `rollingSummary`, `conclusion`, and `parley_promote_summary`.
@@ -18,12 +22,12 @@
 
 ## Committed Scope
 
-- [ ] Expand topic retrieval beyond simple title/body filtering
-- [ ] Define and implement a first-pass topic board query surface over promoted topic memory
-- [ ] Add an operator-facing diagnostic inspection surface for failed session attempts
-- [ ] Clarify replay and repair workflow expectations for operators
-- [ ] Broaden automated verification coverage beyond the current Codex-driven happy path
-- [ ] Refresh test-matrix, risk, and planning docs to reflect the new retrieval and operator bar
+- [x] Expand topic retrieval beyond simple title/body filtering
+- [x] Define and implement a first-pass topic board query surface over promoted topic memory
+- [x] Add an operator-facing diagnostic inspection surface for failed session attempts
+- [x] Clarify replay and repair workflow expectations for operators
+- [x] Broaden automated verification coverage beyond the current Codex-driven happy path
+- [x] Refresh test-matrix, risk, and planning docs to reflect the new retrieval and operator bar
 
 ## Stretch Scope
 
@@ -41,11 +45,11 @@
 
 ## Exit Criteria
 
-- [ ] Operators can retrieve promoted topic memory through more than raw topic CRUD
-- [ ] At least one topic/workspace search path uses promoted knowledge fields such as `decisionSummary`, `canonicalSummary`, `openQuestions`, or `actionItems`
-- [ ] Failed participant attempts can be inspected without reading filesystem artifacts manually
-- [ ] Cross-client validation coverage expands beyond the current single orchestrator profile
-- [ ] `npm test`, `npm run lint`, `npm run typecheck`, and `npm run build` are green
+- [x] Operators can retrieve promoted topic memory through more than raw topic CRUD
+- [x] At least one topic/workspace search path uses promoted knowledge fields such as `decisionSummary`, `canonicalSummary`, `openQuestions`, or `actionItems`
+- [x] Failed participant attempts can be inspected without reading filesystem artifacts manually
+- [x] Cross-client validation coverage expands beyond the current single orchestrator profile
+- [x] `npm test`, `npm run lint`, `npm run typecheck`, and `npm run build` are green
 
 ## Dependencies
 
@@ -62,9 +66,9 @@
 
 ### Task 1. Search and Retrieval Expansion
 
-- [ ] Define the minimum useful search contract for topics and workspace memory
-- [ ] Expand retrieval beyond `title/body` substring filtering
-- [ ] Include promoted fields in the searchable surface without introducing a new storage backend
+- [x] Define the minimum useful search contract for topics and workspace memory
+- [x] Expand retrieval beyond `title/body` substring filtering
+- [x] Include promoted fields in the searchable surface without introducing a new storage backend
 
 Review focus:
 
@@ -89,9 +93,9 @@ Verification:
 
 ### Task 2. Topic Board Expansion
 
-- [ ] Define a board-style retrieval shape for workspaces and topics
-- [ ] Surface promoted topic metadata in a form that downstream clients can render easily
-- [ ] Keep the contract tool-first and additive
+- [x] Define a board-style retrieval shape for workspaces and topics
+- [x] Surface promoted topic metadata in a form that downstream clients can render easily
+- [x] Keep the contract tool-first and additive
 
 Review focus:
 
@@ -116,9 +120,9 @@ Verification:
 
 ### Task 3. Operator Diagnostics and Repair Guidance
 
-- [ ] Add an MCP-readable diagnostic inspection surface for failed step attempts
-- [ ] Define the minimum replay and repair workflow operators should follow after failure
-- [ ] Keep diagnostics outside normalized session state while making them easier to inspect
+- [x] Add an MCP-readable diagnostic inspection surface for failed step attempts
+- [x] Define the minimum replay and repair workflow operators should follow after failure
+- [x] Keep diagnostics outside normalized session state while making them easier to inspect
 
 Review focus:
 
@@ -143,9 +147,9 @@ Verification:
 
 ### Task 4. Broader Verification Coverage
 
-- [ ] Add at least one new orchestrator-oriented verification scenario beyond the current Codex-led path
-- [ ] Expand the test matrix with implemented versus planned coverage
-- [ ] Use the new retrieval and operator surfaces in at least one automated scenario when practical
+- [x] Add at least one new orchestrator-oriented verification scenario beyond the current Codex-led path
+- [x] Expand the test matrix with implemented versus planned coverage
+- [x] Use the new retrieval and operator surfaces in at least one automated scenario when practical
 
 Review focus:
 
