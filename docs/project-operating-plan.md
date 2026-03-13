@@ -35,9 +35,11 @@ As of 2026-03-13, the repository is beyond the bootstrap, placeholder, and runti
 - A live Codex Desktop installation and MCP usage pass has now exercised the actual operator flow on Windows.
 - The Windows Gemini launcher path has been hardened to prefer the npm-installed `gemini.cmd` shim, and the Windows real smoke path is green again.
 - Gemini normalization now recovers common fenced JSON, labeled plain-text, and partial JSON response shapes without widening the shared participant contract.
+- Sprint 10 usefulness hardening now adds stronger anti-fallback participant prompting, targeted regression coverage, and smoke-time usefulness classification without widening the shared participant contract.
+- The release smoke path now emits launcher and usefulness metadata that can be copied into one release-evidence note.
 - A repeatable Codex Desktop acceptance checklist now exists for release review and operator verification.
 
-Sprint 6 hardening is now functionally complete ahead of the original calendar window. Sprint 7 closed the immediate diagnostics access gap, Sprint 8 landed the intended production-readiness hardening pass, and Sprint 9 verification and acceptance work has now landed early enough to tighten the support statement before packaging direction is revisited.
+Sprint 6 hardening is now functionally complete ahead of the original calendar window. Sprint 7 closed the immediate diagnostics access gap, Sprint 8 landed the intended production-readiness hardening pass, Sprint 9 verification and acceptance work landed early enough to tighten the support statement before packaging direction is revisited, and Sprint 10 production-use evidence and release operationalization work is now functionally complete as of 2026-03-13.
 
 ## 2. Working Source Of Truth
 
@@ -363,6 +365,38 @@ Exit bar:
 - Codex Desktop acceptance steps are documented and repeatable
 - Gemini participant execution remains green on Windows smoke with lower avoidable output-shape failures
 
+### Sprint 10: Production-Use Evidence and Release Operationalization
+
+Window: 2026-04-24 to 2026-05-07
+
+Goal:
+
+- strengthen exercised real-environment evidence without overstating support
+- improve Gemini operator usefulness in release-oriented smoke runs
+- make release evidence collection and review more repeatable before packaging resumes
+
+Status:
+
+- Functionally complete as of 2026-03-13
+
+Delivered scope:
+
+- release-oriented smoke now records launcher metadata and Gemini usefulness classification for repeatable evidence capture
+- a lightweight release-evidence template now keeps smoke, acceptance, support-boundary, and post-run notes aligned
+- Gemini prompt hardening plus targeted regression tests now cover low-value fallback patterns while keeping the shared participant contract unchanged
+- the Windows-first support statement remains intact because no additional Linux real-CLI participant environment was exercised
+
+Detailed scope:
+
+- See `docs/sprints/2026-sprint-10.md`
+
+Exit bar:
+
+- a real Linux CLI verification path is either exercised and documented, or the Windows-first support statement remains explicitly intact
+- Linux and macOS evidence remain separated in release-facing docs and support wording
+- Gemini remains contract-valid and is materially more useful in real smoke or the residual quality caveat is documented honestly
+- release review can rely on one repeatable evidence path across smoke, acceptance, matrix, and runbook docs
+
 ## 7. Epic View
 
 ### Epic 1. Core Orchestration
@@ -436,13 +470,14 @@ Done when:
 
 ### Work That Should Happen Now
 
-- keep the Sprint 8 subprocess guardrails, corruption visibility, diagnostics redaction boundaries, and Sprint 9 Gemini normalization coverage green in CI
-- keep the Codex Desktop acceptance checklist, real-CLI smoke path, and support-boundary docs aligned with runtime reality
+- expand real-environment verification only when an additional environment is actually exercised
+- improve Gemini operator usefulness in real smoke without widening the shared participant contract
+- keep the Codex Desktop acceptance checklist, real-CLI smoke path, support-boundary wording, and release evidence docs aligned with runtime reality
 - preserve the current narrow macOS wording until an actual macOS environment is exercised
 
 ### Work That Should Happen Soon After
 
-- packaging direction once the Sprint 9 verification and acceptance bar proves stable
+- packaging direction once the Sprint 10 production-use evidence and release operationalization bar proves stable
 - broader transport validation if it rises above the current stdio-first release posture
 - stronger access policy options if diagnostics move beyond local operator use
 
@@ -490,15 +525,16 @@ Mitigation:
 
 ### This Week
 
-- keep the diagnostics redaction defaults, Gemini normalization regressions, and explicit full-detail path green in CI
-- record the latest Windows smoke, Codex Desktop acceptance, and Ubuntu CI evidence in release review artifacts
-- review whether a real Linux CLI environment is available before broadening the current Windows-first support wording
+- keep the diagnostics redaction defaults, subprocess guardrails, and Gemini normalization coverage green in CI
+- keep the current release-evidence template and smoke output fields aligned whenever release review steps change
+- review whether a real Linux CLI environment is actually available before broadening the current Windows-first support wording
+- rerun the Windows smoke and Codex Desktop acceptance path whenever launcher or release-installation behavior changes
 
 ### Next Implementation Priority
 
 1. Expand real-CLI and OS verification beyond the current Windows-first statement only when additional environments are actually exercised.
 2. Treat Linux and macOS verification as separate evidence tracks; CI is acceptable Linux automation evidence, but do not claim macOS stability without an actual macOS run.
-3. Keep the Codex Desktop acceptance path current whenever release or installation behavior changes.
-4. Keep Gemini participant quality normalization and Windows smoke stability green while preserving the shared participant contract.
-5. Revisit packaging direction only after the Sprint 9 verification bar stays stable.
+3. Keep Gemini operator usefulness reviewable through smoke-time classification and regression coverage while preserving the shared participant contract.
+4. Keep the Codex Desktop acceptance path, smoke evidence, test matrix, release-evidence template, and runbook aligned whenever release or installation behavior changes.
+5. Revisit packaging direction only after the Sprint 10 production-use evidence bar stays stable.
 6. Consider stronger access policy options only if diagnostics move beyond local operator use.

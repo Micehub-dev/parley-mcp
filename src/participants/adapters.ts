@@ -12,6 +12,11 @@ import type {
 import { SpawnCommandExecutor, type CommandExecutionInput, type CommandExecutor } from "./runtime.js";
 import type { ParticipantKind, ParticipantResponse } from "../types.js";
 
+export interface ParticipantResponseUsefulnessAssessment {
+  classification: "material" | "generic_fallback";
+  reasons: string[];
+}
+
 export function createParticipantAdapters(
   executor: CommandExecutor = new SpawnCommandExecutor()
 ): ParticipantAdapterRegistry {
@@ -224,8 +229,13 @@ export function buildParticipantPrompt(
     "- Do not wrap the JSON in markdown fences.",
     "- Use one of: agree, disagree, refine, undecided.",
     "- If you are unsure about stance, use undecided.",
+    "- Make the summary topic-specific instead of describing your own process or readiness.",
     "- Keep arguments and questions as JSON arrays. Use [] when empty.",
-    "- Always provide a short proposed_next_step string.",
+    "- If context is limited, ask one concrete topic question instead of giving a generic fallback.",
+    "- Avoid generic filler such as 'I am ready to participate' or 'Here is a structured response'.",
+    "- Do not ask for the objective, task, or workspace context. The topic above is already the task.",
+    "- Do not say you are ready to participate; contribute one concrete point about the topic instead.",
+    "- Always provide a short proposed_next_step string that is specific to the topic or current disagreement.",
     "",
     "Session context:",
     `- session_id: ${input.session.sessionId}`,
@@ -246,6 +256,56 @@ export function buildParticipantPrompt(
     "",
     "Focus on the topic, react to earlier responses when present, and propose a concrete next step."
   ].join("\n");
+}
+
+export function assessParticipantResponseUsefulness(
+  response: ParticipantResponse,
+  topic: string
+): ParticipantResponseUsefulnessAssessment {
+  const reasons: string[] = [];
+  const topicTokens = extractMeaningfulTopicTokens(topic);
+  const responseText = [
+    response.summary,
+    ...response.arguments,
+    ...response.questions,
+    response.proposed_next_step
+  ]
+    .join(" ")
+    .toLowerCase();
+  const matchedTopicTokens = topicTokens.filter((token) => responseText.includes(token));
+  const hasSupportingDetail = response.arguments.length > 0 || response.questions.length > 0;
+
+  if (isGenericFallbackSummary(response.summary)) {
+    reasons.push("generic_summary");
+  }
+
+  if (
+    response.proposed_next_step === "Continue the parley with the next participant response."
+  ) {
+    reasons.push("default_next_step");
+  }
+
+  if (matchedTopicTokens.length === 0) {
+    reasons.push("missing_topic_terms");
+  }
+
+  if (!hasSupportingDetail) {
+    reasons.push("no_supporting_detail");
+  }
+
+  const classification =
+    reasons.includes("generic_summary") &&
+    reasons.includes("missing_topic_terms") &&
+    reasons.includes("no_supporting_detail")
+      ? "generic_fallback"
+      : reasons.length === 4
+        ? "generic_fallback"
+        : "material";
+
+  return {
+    classification,
+    reasons
+  };
 }
 
 function parseParticipantResponse(value: unknown): ParticipantResponse {
@@ -427,7 +487,7 @@ function normalizeGeminiSummaryText(value: string): string {
     .filter((line) => line.length > 0);
 
   const cleanedLines = [...lines];
-  while (cleanedLines[0] && isGeminiMetaPlanningLine(cleanedLines[0])) {
+  while (cleanedLines[0] && isGeminiMetaLeadInLine(cleanedLines[0])) {
     cleanedLines.shift();
   }
 
@@ -435,8 +495,12 @@ function normalizeGeminiSummaryText(value: string): string {
   return summary;
 }
 
-function isGeminiMetaPlanningLine(value: string): boolean {
-  return /^(?:i will|i'll|let me)\b/iu.test(value);
+function isGeminiMetaLeadInLine(value: string): boolean {
+  return (
+    /^(?:i will|i'll|let me)\b/iu.test(value) ||
+    /^(?:here(?:'s| is)|sure\b|certainly\b|absolutely\b)/iu.test(value) ||
+    /^i (?:am|can|can certainly|would) (?:ready|help|provide|respond)\b/iu.test(value)
+  );
 }
 
 function parseGeminiLabeledTextResponse(value: string): ParticipantResponse | null {
@@ -583,6 +647,55 @@ function getFirstString(
   }
 
   return undefined;
+}
+
+function extractMeaningfulTopicTokens(topic: string): string[] {
+  const stopWords = new Set([
+    "about",
+    "after",
+    "before",
+    "brief",
+    "concrete",
+    "hardening",
+    "into",
+    "keep",
+    "make",
+    "more",
+    "next",
+    "one",
+    "only",
+    "parley",
+    "return",
+    "short",
+    "that",
+    "the",
+    "this",
+    "with"
+  ]);
+
+  return [...new Set(
+    topic
+      .toLowerCase()
+      .split(/[^a-z0-9]+/u)
+      .filter((token) => token.length >= 4 && !stopWords.has(token))
+  )];
+}
+
+function isGenericFallbackSummary(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  return [
+    /ready to participate/u,
+    /happy to help/u,
+    /can help with/u,
+    /parley multi-llm session/u,
+    /structured (?:thought|response)/u,
+    /here(?:'s| is) (?:a|my|the) /u,
+    /brief response/u
+  ].some((pattern) => pattern.test(normalized));
 }
 
 function resolveParticipantLaunch(participant: ParticipantKind): {

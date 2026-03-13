@@ -56,3 +56,4 @@ Use this checklist to confirm that Parley is installable and operable from Codex
 
 - This checklist does not claim macOS verification.
 - This checklist does not replace the release-oriented real CLI smoke or CI checks.
+- Release review should record this checklist alongside the current smoke output in the active note based on `docs/release-evidence-template.md`.

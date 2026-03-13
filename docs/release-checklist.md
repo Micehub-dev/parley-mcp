@@ -20,6 +20,8 @@
 ## Preflight
 
 - Confirm `npm test`, `npm run lint`, `npm run typecheck`, and `npm run build` are green on the release commit.
+- Open or refresh the current release-evidence record before smoke begins so support-boundary wording, smoke results, and acceptance results are recorded together.
+- Prefer `docs/release-evidence-template.md` unless the release already has an equivalent note in progress.
 - Confirm `docs/mcp-contract-spec.md`, `README.md`, sprint docs, and PM docs reflect any runtime or contract changes in the release.
 - Confirm `.multi-llm/config.json` compatibility has been reviewed if model allowlists or defaults changed.
 - Confirm participant CLI prerequisites are documented for the target operators.
@@ -36,6 +38,8 @@
 - Keep `PARLEY_PARTICIPANT_TIMEOUT_MS` and `PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES` at their intended release values during the smoke check.
 - Treat any `participant_failure` with `guardrail`, `timedOut`, or `outputLimitExceeded` details as a release blocker until the operator confirms the behavior is expected.
 - Treat `storage_failure` with `artifactType` or `failureKind` details as a release blocker until the damaged artifact path and replay boundary are understood.
+- Record the participant launcher path actually used, the OS, the smoke date, and whether Gemini output was merely contract-valid or materially useful for operator review.
+- Copy the `participantLaunches`, `environment`, and `geminiUsefulness` fields from the smoke output into the active release-evidence note.
 - If release review includes Codex Desktop support claims, run the checklist in `docs/codex-desktop-acceptance.md` alongside the smoke check.
 
 ## Rollout
@@ -43,6 +47,7 @@
 - Tag the release candidate only after preflight and smoke checks are recorded.
 - Publish release notes that call out support boundaries, CLI prerequisites, and any known OS-specific caveats.
 - Announce whether the release was verified with fixture-backed automation only or with an additional real-CLI smoke.
+- Keep automated Linux evidence, Windows real smoke evidence, and any future macOS evidence explicitly separated in release communication.
 - Keep rollback owners and communication channels active until the first post-release smoke or operator confirmation completes.
 
 ## Rollback
@@ -57,5 +62,7 @@
 - Record any required launcher overrides, especially on Windows participant wrappers.
 - Record whether the Codex Desktop acceptance checklist was exercised alongside the release candidate.
 - Record whether Linux evidence came only from CI or from an additional real environment, and keep macOS wording narrow when it remains unverified.
+- Record whether Gemini output met the current operator-usefulness bar or only cleared the shared contract.
+- Link the completed release-evidence note so future release review does not reconstruct the same facts manually.
 - Update `docs/risk-register.md` and `docs/test-matrix.md` if the release changed the real-environment confidence bar.
 - Archive temporary smoke artifacts unless an active investigation requires them to remain on disk.

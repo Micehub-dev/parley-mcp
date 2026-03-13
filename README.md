@@ -59,7 +59,7 @@ flowchart LR
 
 ## Current Status
 
-The repository is currently at the **cross-environment verification and acceptance hardening** stage.
+The repository is currently at the **Windows-first production-readiness hardening** stage.
 
 - MCP server skeleton and core session lifecycle are implemented
 - Filesystem-backed storage is implemented
@@ -84,7 +84,10 @@ The repository is currently at the **cross-environment verification and acceptan
 - a live Codex Desktop installation and MCP usage pass has now verified server registration, lease flow, step execution, diagnostics inspection, and real participant execution on Windows
 - GitHub Actions CI now exercises lint, typecheck, test, and build on `ubuntu-latest` as the current Linux automation evidence path
 - Gemini normalization now recovers common markdown-fenced JSON, labeled plain-text, and partial JSON response shapes without widening the shared contract
+- Gemini usefulness hardening now adds stronger anti-fallback prompting, targeted regression coverage, and smoke-time usefulness classification without widening the shared contract
+- `npm run smoke:real` now emits release-evidence metadata including launcher details, OS facts, and Gemini usefulness classification
 - CI is configured for install, lint, test, typecheck, and build
+- Sprint 10 planning is now focused on exercised real-environment evidence, Gemini operator usefulness in real smoke, and repeatable release-evidence collection rather than new product surface area
 
 ## Repository Layout
 
@@ -145,6 +148,8 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 - Current automated Linux evidence comes from GitHub Actions on `ubuntu-latest`
 - Current real-environment operator evidence comes from Windows local `npm run smoke:real` plus the Codex Desktop acceptance pass
 - macOS remains unverified; keep support wording narrow until an actual macOS environment is exercised
+- `npm run smoke:real` now defaults to a release-oriented production-readiness prompt and records `participantLaunches` plus `geminiUsefulness` in its output
+- Current next-step focus is to add exercised Linux evidence only when a real Linux participant environment is available, improve Gemini response usefulness during real smoke, and keep release evidence easier to review
 - Default participant guardrails:
   - `PARLEY_PARTICIPANT_TIMEOUT_MS=120000`
   - `PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES=1000000`
@@ -160,15 +165,18 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 - `docs/project-operating-plan.md`: PM-oriented roadmap, sprint structure, and prioritization
 - `docs/mcp-contract-spec.md`: MCP contract source of truth
 - `docs/real-cli-smoke.md`: release-oriented real CLI smoke workflow and latest observed result
+- `docs/release-evidence-template.md`: repeatable note template for smoke, acceptance, and support-boundary evidence
 - `docs/release-checklist.md`: release runbook for preflight, rollout, rollback, and post-release review
+- `docs/sprints/2026-sprint-10.md`: current production-readiness sprint focused on evidence, Gemini usefulness, and release operationalization
 - `multi-cli-parley-architecture.md`: architecture rationale and long-form design
 
 ## Roadmap
 
 - Add a real Linux CLI evidence path only when an actual Linux participant environment is available
-- Keep the Codex Desktop acceptance checklist and Windows smoke evidence current as release gates evolve
+- Improve Gemini operator usefulness in real smoke without widening the shared participant contract
+- Keep smoke, Codex Desktop acceptance, test matrix, and release docs aligned as one release-evidence workflow
 - Validate macOS only from an exercised macOS environment; keep the support statement narrow until then
-- Package thin surfaces for plugins, extensions, and future UI layers only after the stronger Sprint 9 verification bar remains stable
+- Package thin surfaces for plugins, extensions, and future UI layers only after the stronger Sprint 10 production-use evidence bar remains stable
 
 ## Use Cases
 
