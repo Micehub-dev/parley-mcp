@@ -203,6 +203,62 @@ test("gemini adapter infers a concrete next step and supporting detail from plai
   }
 });
 
+test("gemini adapter extracts bolded proposed next steps from markdown-like prose", async () => {
+  const executor = new FakeCommandExecutor({
+    stdout: JSON.stringify({
+      response:
+        "A concrete production-readiness risk is platform-specific path handling drift. **Why it matters:** Windows is case-insensitive while Linux CI and production paths are not. **Proposed Next Step:** Implement a cross-platform CI pipeline (e.g., via GitHub Actions) that runs on both `ubuntu-latest` and `windows-latest`."
+    })
+  });
+  const adapters = createParticipantAdapters(executor);
+
+  const result = await adapters.gemini.run(buildAdapterInput());
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(
+      result.output.summary,
+      "A concrete production-readiness risk is platform-specific path handling drift."
+    );
+    assert.deepEqual(result.output.arguments, [
+      "**Why it matters:** Windows is case-insensitive while Linux CI and production paths are not."
+    ]);
+    assert.equal(
+      result.output.proposed_next_step,
+      "Implement a cross-platform CI pipeline (e.g., via GitHub Actions) that runs on both `ubuntu-latest` and `windows-latest`."
+    );
+  }
+});
+
+test("gemini adapter extracts markdown-heading next steps from prose", async () => {
+  const executor = new FakeCommandExecutor({
+    stdout: JSON.stringify({
+      response: [
+        "A concrete production-readiness risk is shell and path divergence across operating systems.",
+        "### Why it Matters",
+        "Most CI and cloud runtimes are Linux-based, so Windows-only verification misses real failures.",
+        "### Proposed Next Step",
+        "Implement a cross-platform CI pipeline (e.g., using GitHub Actions) that runs on ubuntu-latest and windows-latest."
+      ].join("\n")
+    })
+  });
+  const adapters = createParticipantAdapters(executor);
+
+  const result = await adapters.gemini.run(buildAdapterInput());
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(
+      result.output.summary,
+      "A concrete production-readiness risk is shell and path divergence across operating systems."
+    );
+    assert.equal(
+      result.output.proposed_next_step,
+      "Implement a cross-platform CI pipeline (e.g., using GitHub Actions) that runs on ubuntu-latest and windows-latest."
+    );
+  }
+});
+
 test("gemini adapter coerces non-enum stance values from JSON payloads", async () => {
   const executor = new FakeCommandExecutor({
     stdout: JSON.stringify({
@@ -242,6 +298,36 @@ test("gemini adapter parses markdown-fenced JSON responses", async () => {
     assert.equal(result.output.summary, "Use the smaller rollout first.");
     assert.deepEqual(result.output.arguments, ["It lowers deployment risk."]);
     assert.equal(result.output.proposed_next_step, "Run the smoke path on the canary.");
+  }
+});
+
+test("gemini adapter parses markdown-fenced JSON even when Gemini adds planning text first", async () => {
+  const executor = new FakeCommandExecutor({
+    stdout: JSON.stringify({
+      response: [
+        "I will review the request and prepare a structured response.",
+        "```json",
+        "{\"stance\":\"refine\",\"summary\":\"Windows release verification still depends on one clean smoke run.\",\"arguments\":[\"CI is green on both Windows and Ubuntu.\"],\"questions\":[],\"proposed_next_step\":\"Rerun the Windows real smoke and attach the generated release evidence.\"}",
+        "```"
+      ].join("\n")
+    })
+  });
+  const adapters = createParticipantAdapters(executor);
+
+  const result = await adapters.gemini.run(buildAdapterInput());
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.output.stance, "refine");
+    assert.equal(
+      result.output.summary,
+      "Windows release verification still depends on one clean smoke run."
+    );
+    assert.deepEqual(result.output.arguments, ["CI is green on both Windows and Ubuntu."]);
+    assert.equal(
+      result.output.proposed_next_step,
+      "Rerun the Windows real smoke and attach the generated release evidence."
+    );
   }
 });
 
@@ -327,9 +413,14 @@ test("participant prompt includes the Sprint 10 usefulness bar", () => {
   assert.match(prompt, /ask one concrete topic question/i);
   assert.match(prompt, /Provide at least one useful argument or one concrete question/i);
   assert.match(prompt, /Avoid generic filler/i);
+  assert.match(prompt, /Do not identify yourself as Gemini CLI, Claude, or another assistant persona/i);
   assert.match(prompt, /Do not ask for the objective/i);
+  assert.match(prompt, /Do not ask how you can help or contribute/i);
+  assert.match(prompt, /Do not say that you need to inspect files/i);
+  assert.match(prompt, /Treat the topic and earlier participant responses as sufficient context/i);
   assert.match(prompt, /Do not say you are ready to participate/i);
   assert.match(prompt, /Do not use a generic next step/i);
+  assert.match(prompt, /If earlier responses are present, directly challenge, refine, or extend/i);
 });
 
 test("usefulness assessment flags generic fallback Gemini responses", () => {
