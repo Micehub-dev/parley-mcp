@@ -182,6 +182,20 @@ export interface SessionDiagnosticRecord {
   participants: SessionDiagnosticParticipant[];
 }
 
+export interface DiagnosticRepairAction {
+  tool: "parley_state" | "parley_step";
+  arguments: Record<string, unknown>;
+  reason: string;
+}
+
+export interface DiagnosticRepairGuidance {
+  summary: string;
+  recommendedSteps: string[];
+  canRetrySameVersion: boolean;
+  shouldReadStateFirst: boolean;
+  nextAction: DiagnosticRepairAction;
+}
+
 export interface TranscriptEntry {
   timestamp: string;
   kind: "system" | "orchestrator" | "participant";

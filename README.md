@@ -36,6 +36,7 @@ Most AI tooling gets trapped inside one client surface. Parley takes the opposit
 - Topic-memory search across promoted summaries, open questions, action items, and tags
 - Workspace board digests for status-oriented topic retrieval
 - Operator-facing diagnostic inspection with replay and repair guidance
+- Next-safe repair actions derived from persisted diagnostics for replay-boundary follow-up
 
 ## Architecture
 
@@ -54,7 +55,7 @@ flowchart LR
 
 ## Current Status
 
-The repository is currently at the **operator-tooling and knowledge-layer expansion** stage.
+The repository is currently at the **verification and synthesis hardening** stage.
 
 - MCP server skeleton and core session lifecycle are implemented
 - Filesystem-backed storage is implemented
@@ -65,11 +66,13 @@ The repository is currently at the **operator-tooling and knowledge-layer expans
 - `parley_promote_summary` promotes finished-session conclusions into linked topic memory
 - `parley_search_topics` retrieves promoted topic memory across summaries, questions, actions, and tags
 - `parley_get_workspace_board` exposes board-style workspace digests for downstream clients
-- `parley_list_diagnostics` exposes failed step diagnostics with operator repair guidance
+- `parley_list_diagnostics` exposes failed step diagnostics with operator repair guidance and next-safe tool actions
+- rolling summary, conclusion, and promoted topic memory now deduplicate repeated questions/action items and emit more compact synthesis text
+- stdio integration coverage now exercises participant resume reuse and lease-conflict handling across orchestrator-labeled runs
 - Structured MCP tool errors now return machine-readable JSON envelopes with `isError: true`
 - Failed participant attempts persist debug-friendly diagnostics under `.multi-llm/sessions/<sessionId>/diagnostics/`
 - Service and adapter tests cover happy-path execution, retrieval, diagnostics, and key failure modes
-- Stdio MCP integration coverage now exercises `start -> claim_lease -> step -> finish -> promote -> search -> board`
+- Stdio MCP integration coverage now exercises `start -> claim_lease -> step -> finish -> promote -> search -> board`, resume reuse, and lease-conflict scenarios
 - CI is configured for install, lint, test, typecheck, and build
 
 ## Repository Layout
@@ -133,9 +136,9 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 
 ## Roadmap
 
-- Refine topic-memory quality and repair ergonomics on top of the stable Sprint 5 surface
-- Broaden orchestrator verification beyond the current Windows-first matrix
-- Package thin surfaces for plugins, extensions, and future UI layers
+- Keep packaging direction downstream of the now-stable Sprint 6 hardening bar
+- Expand redaction/access guidance before diagnostics-oriented helper surfaces grow further
+- Package thin surfaces for plugins, extensions, and future UI layers only after those safeguards stay stable
 
 ## Use Cases
 

@@ -6,6 +6,7 @@ This document tracks the implemented MCP contract for the current runtime.
 
 - Sprint 4 rolling summary, structured conclusion, and explicit topic promotion are now implemented.
 - Sprint 5 search, workspace-board retrieval, and diagnostic inspection surfaces are now implemented.
+- Sprint 6 resume/lease verification hardening and additive repair-action hints are now implemented.
 - Compatibility string fields remain in place so existing orchestrators can migrate additively.
 - The design rationale and frozen migration rules still live in `docs/decisions/ADR-0001-sprint-4-synthesis-contract.md`.
 
@@ -112,6 +113,8 @@ Behavior notes:
 - `rollingSummary` is updated only after a successful committed `parley_step`.
 - `rollingSummary` summarizes the session so far, not only the latest turn.
 - The current synthesis is heuristic and intentionally transcript-light.
+- Repeated questions and action items are deduplicated with normalization so promoted memory stays less noisy.
+- `undecided` turns no longer accumulate into consensus automatically.
 - `latestSummary`, when present, is derived from `rollingSummary.synopsis`.
 
 ### `SessionConclusion`
@@ -130,6 +133,7 @@ Behavior notes:
 Behavior notes:
 
 - `summary` is the finish-time closeout text.
+- `summary` is compacted from the accumulated synthesis rather than mirroring the full rolling synopsis verbatim.
 - `recommendedDisposition` is a topic-promotion hint that maps into the current topic status set.
 - Repeated `parley_finish` calls for the same unchanged session return the same logical conclusion.
 
@@ -518,7 +522,17 @@ Output:
     "summary": "Participant execution failed before the turn was committed.",
     "recommendedSteps": ["Inspect the failed participant stderr, exit code, and launcher command."],
     "canRetrySameVersion": true,
-    "shouldReadStateFirst": false
+    "shouldReadStateFirst": false,
+    "nextAction": {
+      "tool": "parley_step",
+      "arguments": {
+        "parleySessionId": "parley-001",
+        "expectedStateVersion": 2,
+        "orchestratorRunId": "run-001",
+        "speakerOrder": ["claude", "gemini"]
+      },
+      "reason": "The failed turn was not committed, so the same step can be retried after the underlying issue is fixed."
+    }
   }
 }
 ```
@@ -528,6 +542,7 @@ Behavior notes:
 - Diagnostics remain stored under `.multi-llm/sessions/{sessionId}/diagnostics/`.
 - Filtering is additive and filesystem-backed.
 - `repairGuidance.canRetrySameVersion = false` together with `shouldReadStateFirst = true` signals the replay-boundary case where session state may already be committed.
+- `repairGuidance.nextAction` is additive helper output derived from the diagnostic record; it does not introduce new session state.
 
 ## Open Questions
 

@@ -13,5 +13,7 @@
 | Codex | N/A | Windows | service | topic search matches promoted knowledge fields and tag filters | Implemented |
 | Codex | N/A | Windows | service | workspace board retrieval returns status columns and promoted digests | Implemented |
 | Codex | N/A | Windows | service | persisted diagnostics return repair guidance and replay hints | Implemented |
-| Claude | Claude + Gemini | Windows | stdio | resume with stored session | Planned |
-| Gemini | Claude + Gemini | Windows | stdio | lease conflict handling | Planned |
+| Claude | Claude + Gemini | Windows | stdio | resume with stored session | Implemented |
+| Gemini | Claude + Gemini | Windows | stdio | lease conflict handling | Implemented |
+| Codex | N/A | Windows | service | synthesis deduplicates repeated questions/action items and excludes undecided turns from consensus | Implemented |
+| Codex | N/A | Windows | service | diagnostics include next-safe repair action hints for replay-boundary follow-up | Implemented |
