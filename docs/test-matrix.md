@@ -39,3 +39,6 @@
 - Fixture-backed automation remains the primary CI confidence surface.
 - Real-CLI smoke is intentionally lightweight and release-oriented rather than a large manual QA program.
 - Windows operators should prefer the npm-installed `gemini.cmd` shim when it is available; use launcher overrides only when `gemini.ps1` is the only working entrypoint.
+- Sprint 9 should improve this matrix by adding at least one additional exercised environment where practical and a documented Codex Desktop acceptance path.
+- Linux evidence may come from WSL and or CI if that is the only realistic non-Windows path available during the sprint.
+- macOS should remain a design target until an actual macOS environment is exercised; checklist preparation alone does not change the support statement.

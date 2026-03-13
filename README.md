@@ -80,7 +80,8 @@ The repository is currently at the **production-readiness hardening** stage.
 - Failed participant attempts persist debug-friendly diagnostics under `.multi-llm/sessions/<sessionId>/diagnostics/`
 - Service and adapter tests cover happy-path execution, retrieval, diagnostics, and key failure modes
 - Stdio MCP integration coverage now exercises `start -> claim_lease -> step -> finish -> promote -> search -> board`, resume reuse, and lease-conflict scenarios
-- `npm run smoke:real` provides a release-oriented real CLI smoke path, with the current Windows Gemini wrapper caveat documented under `docs/real-cli-smoke.md`
+- `npm run smoke:real` now passes on a Windows local environment using `claude.exe` together with the npm-installed `gemini.cmd` shim
+- a live Codex Desktop installation and MCP usage pass has now verified server registration, lease flow, step execution, diagnostics inspection, and real participant execution on Windows
 - CI is configured for install, lint, test, typecheck, and build
 
 ## Repository Layout
@@ -157,9 +158,10 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 
 ## Roadmap
 
-- Keep packaging direction downstream of the now-stable Sprint 8 production-readiness hardening bar
-- Keep subprocess guardrails, corruption visibility, and diagnostics access rules stable before broader distribution work
-- Package thin surfaces for plugins, extensions, and future UI layers only after those safeguards stay stable
+- Expand real-environment verification beyond the current Windows-only release evidence
+- Document a repeatable Codex Desktop acceptance path alongside the current stdio-first support posture
+- Tighten Gemini participant quality normalization before revisiting packaging direction
+- Package thin surfaces for plugins, extensions, and future UI layers only after the stronger Sprint 9 verification bar is met
 
 ## Use Cases
 

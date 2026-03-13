@@ -51,5 +51,6 @@
 
 - Record whether the real-CLI smoke passed cleanly or exposed an environment-specific caveat.
 - Record any required launcher overrides, especially on Windows participant wrappers.
+- Record whether the Codex Desktop acceptance checklist was exercised alongside the release candidate.
 - Update `docs/risk-register.md` and `docs/test-matrix.md` if the release changed the real-environment confidence bar.
 - Archive temporary smoke artifacts unless an active investigation requires them to remain on disk.
