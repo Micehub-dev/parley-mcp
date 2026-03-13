@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -69,10 +70,17 @@ test("gemini adapter parses response payloads and reuses persisted resume IDs", 
 
   const expectedGeminiCommand =
     process.platform === "win32"
-      ? path.join(process.env.APPDATA ?? "", "npm", "gemini.cmd")
+      ? existsSync(path.join(process.env.APPDATA ?? "", "npm", "gemini.cmd"))
+        ? path.join(process.env.APPDATA ?? "", "npm", "gemini.cmd")
+        : "gemini"
       : "gemini";
-  assert.equal(executor.calls[0]?.command, process.platform === "win32" ? (process.env.ComSpec ?? "cmd.exe") : expectedGeminiCommand);
-  if (process.platform === "win32") {
+  assert.equal(
+    executor.calls[0]?.command,
+    process.platform === "win32" && expectedGeminiCommand.endsWith(".cmd")
+      ? (process.env.ComSpec ?? "cmd.exe")
+      : expectedGeminiCommand
+  );
+  if (process.platform === "win32" && expectedGeminiCommand.endsWith(".cmd")) {
     assert.deepEqual(executor.calls[0]?.args.slice(0, 4), [
       "/d",
       "/s",
