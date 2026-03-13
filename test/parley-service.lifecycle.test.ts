@@ -419,6 +419,68 @@ test("advanceStep commits Gemini responses that were normalized from labeled pla
   }
 });
 
+test("advanceStep commits Gemini plain-text prose with an inferred next step", async () => {
+  const fixture = await createFixture(
+    createParticipantAdapters(
+      new SequencedCommandExecutor([
+        {
+          stdout: JSON.stringify({
+            response:
+              "Windows CI parity will catch launcher regressions before release review. Add a windows-latest validation lane before the next release cut.",
+            sessionId: "gemini-session-plain-1"
+          })
+        },
+        {
+          stdout: JSON.stringify({
+            result: JSON.stringify({
+              stance: "agree",
+              summary: "Claude agrees that Windows CI should land before release.",
+              arguments: ["Claude wants the validation bar mirrored in automation."],
+              questions: [],
+              proposed_next_step: "Merge the Windows CI workflow update."
+            }),
+            session_id: "claude-session-plain-1"
+          })
+        }
+      ])
+    )
+  );
+
+  try {
+    const started = await fixture.service.startSession({
+      workspaceId: "default",
+      workspaceRoot: fixture.rootDir,
+      topic: "Plain-text Gemini normalization",
+      orchestrator: "codex",
+      orchestratorRunId: "run-021b"
+    });
+    const lease = await fixture.service.claimLease({
+      parleySessionId: started.parleySessionId,
+      orchestratorRunId: "run-021b",
+      ttlSeconds: 300
+    });
+
+    const step = await fixture.service.advanceStep({
+      parleySessionId: started.parleySessionId,
+      expectedStateVersion: lease.stateVersion,
+      orchestratorRunId: "run-021b",
+      speakerOrder: ["gemini", "claude"]
+    });
+
+    assert.equal(
+      step.responses.gemini.summary,
+      "Windows CI parity will catch launcher regressions before release review."
+    );
+    assert.equal(
+      step.responses.gemini.proposed_next_step,
+      "Add a windows-latest validation lane before the next release cut."
+    );
+    assert.deepEqual(step.responses.gemini.arguments, []);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("advanceStep rejects malformed participant output before mutating session state", async () => {
   const fixture = await createFixture(
     createMockAdapters({

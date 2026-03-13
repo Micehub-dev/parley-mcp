@@ -80,14 +80,14 @@ The repository is currently at the **Windows-first production-readiness hardenin
 - Failed participant attempts persist debug-friendly diagnostics under `.multi-llm/sessions/<sessionId>/diagnostics/`
 - Service and adapter tests cover happy-path execution, retrieval, diagnostics, and key failure modes
 - Stdio MCP integration coverage now exercises `start -> claim_lease -> step -> finish -> promote -> search -> board`, resume reuse, and lease-conflict scenarios
-- `npm run smoke:real` now passes on a Windows local environment using `claude.exe` together with the npm-installed `gemini.cmd` shim
+- the most recent documented clean Windows smoke pass used `claude.exe` together with the npm-installed `gemini.cmd` shim
 - a live Codex Desktop installation and MCP usage pass has now verified server registration, lease flow, step execution, diagnostics inspection, and real participant execution on Windows
-- GitHub Actions CI now exercises lint, typecheck, test, and build on `ubuntu-latest` as the current Linux automation evidence path
+- GitHub Actions CI is now configured as an `ubuntu-latest` plus `windows-latest` matrix for lint, typecheck, test, and build
 - Gemini normalization now recovers common markdown-fenced JSON, labeled plain-text, and partial JSON response shapes without widening the shared contract
-- Gemini usefulness hardening now adds stronger anti-fallback prompting, targeted regression coverage, and smoke-time usefulness classification without widening the shared contract
-- `npm run smoke:real` now emits release-evidence metadata including launcher details, OS facts, and Gemini usefulness classification
-- CI is configured for install, lint, test, typecheck, and build
-- Sprint 11 planning is now focused on Windows CI parity, repeatable release-evidence generation, and tighter Gemini usefulness review rather than new product surface area
+- Gemini usefulness hardening now adds stronger anti-fallback prompting, plain-text next-step inference, stricter fallback classification, and targeted regression coverage without widening the shared contract
+- `npm run smoke:real` now emits `releaseEvidence` and `releaseEvidenceMarkdown`, and can write reusable JSON and Markdown artifacts when `PARLEY_SMOKE_EVIDENCE_DIR` is set
+- CI is configured for install, lint, test, typecheck, and build on both Linux and Windows runners
+- Sprint 11 implementation now centers on keeping the new automation lane, generated release evidence, and Gemini usefulness review stable while real smoke is revalidated honestly
 
 ## Repository Layout
 
@@ -145,11 +145,12 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 ## Operational Notes
 
 - Supported transport today: stdio MCP only
-- Current automated Linux evidence comes from GitHub Actions on `ubuntu-latest`
+- Current automated evidence comes from the GitHub Actions `ubuntu-latest` plus `windows-latest` matrix
 - Current real-environment operator evidence comes from Windows local `npm run smoke:real` plus the Codex Desktop acceptance pass
 - macOS remains unverified; keep support wording narrow until an actual macOS environment is exercised
-- `npm run smoke:real` now defaults to a release-oriented production-readiness prompt and records `participantLaunches` plus `geminiUsefulness` in its output
-- Current next-step focus is to add Windows CI parity, generate release evidence more directly from smoke runs, improve Gemini response usefulness during real smoke, and add exercised Linux evidence only when a real Linux participant environment is available
+- `npm run smoke:real` now defaults to a release-oriented production-readiness prompt and records `participantLaunches`, `geminiUsefulness`, `releaseEvidence`, and `releaseEvidenceMarkdown` in its output
+- Set `PARLEY_SMOKE_EVIDENCE_DIR` to write reusable release-evidence `.json` and `.md` artifacts directly from the smoke workflow
+- Current next-step focus is to keep the Windows and Linux CI matrix green, rerun Windows real smoke whenever launcher or authentication behavior changes, and add exercised Linux evidence only when a real Linux participant environment is available
 - Default participant guardrails:
   - `PARLEY_PARTICIPANT_TIMEOUT_MS=120000`
   - `PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES=1000000`
@@ -172,9 +173,9 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 
 ## Roadmap
 
-- Add Windows CI parity for the current Windows-first release posture
-- Generate reusable release evidence directly from the smoke workflow
-- Improve Gemini operator usefulness in real smoke without widening the shared participant contract
+- Keep the Windows and Linux CI matrix green for the current release-validation bar
+- Use generated release-evidence artifacts directly from the smoke workflow during release review
+- Revalidate Gemini operator usefulness in real smoke without widening the shared participant contract
 - Add a real Linux CLI evidence path only when an actual Linux participant environment is available
 - Keep smoke, Codex Desktop acceptance, test matrix, and release docs aligned as one release-evidence workflow
 - Validate macOS only from an exercised macOS environment; keep the support statement narrow until then

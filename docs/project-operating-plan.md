@@ -31,17 +31,19 @@ As of 2026-03-13, the repository is beyond the bootstrap, placeholder, and runti
 - Participant subprocesses now enforce timeout, kill-grace, and output-size guardrails.
 - JSON-backed artifacts now write through atomic temp-file replacement and surface explicit corruption/readability failures on read paths.
 - A release-oriented real CLI smoke workflow and runbook baseline now exist for production-readiness review.
-- Automated coverage exists at the service, adapter, and stdio MCP integration layers and is exercised in GitHub Actions on `ubuntu-latest`.
+- Automated coverage exists at the service, adapter, and stdio MCP integration layers and the repo is now configured to exercise them in GitHub Actions on both `ubuntu-latest` and `windows-latest`.
 - A live Codex Desktop installation and MCP usage pass has now exercised the actual operator flow on Windows.
 - The Windows Gemini launcher path has been hardened to prefer the npm-installed `gemini.cmd` shim, and the Windows real smoke path is green again.
 - Gemini normalization now recovers common fenced JSON, labeled plain-text, and partial JSON response shapes without widening the shared participant contract.
 - Sprint 10 usefulness hardening now adds stronger anti-fallback participant prompting, targeted regression coverage, and smoke-time usefulness classification without widening the shared participant contract.
-- The release smoke path now emits launcher and usefulness metadata that can be copied into one release-evidence note.
+- Sprint 11 usefulness hardening now infers topic-specific next steps from some plain-text Gemini prose and classifies thin default-next-step replies more strictly during release review.
+- The release smoke path now emits launcher metadata, a reusable release-evidence note payload, and optional `.json` plus `.md` artifacts when requested.
 - A repeatable Codex Desktop acceptance checklist now exists for release review and operator verification.
+- The latest local Codex-run smoke attempt on 2026-03-13 hit a Gemini timeout on the current workstation, so Sprint 11 remains in progress until real smoke is rerun cleanly.
 
 Sprint 6 hardening is now functionally complete ahead of the original calendar window. Sprint 7 closed the immediate diagnostics access gap, Sprint 8 landed the intended production-readiness hardening pass, Sprint 9 verification and acceptance work landed early enough to tighten the support statement before packaging direction is revisited, and Sprint 10 production-use evidence and release operationalization work is now functionally complete as of 2026-03-13.
 
-Sprint 11 is now planned as the next production-readiness sprint, focused on Windows CI parity, release-evidence automation, and a tighter Gemini usefulness bar rather than new end-user surface area.
+Sprint 11 is now in progress as the current production-readiness sprint, focused on Windows CI parity, release-evidence automation, and a tighter Gemini usefulness bar rather than new end-user surface area.
 
 ## 2. Working Source Of Truth
 
@@ -411,14 +413,19 @@ Goal:
 
 Status:
 
-- Planned
+- In progress as of 2026-03-13
 
-Planned scope:
+Delivered scope so far:
 
-- add `windows-latest` CI coverage for install, lint, typecheck, test, and build while preserving the explicit Linux automation lane
-- turn smoke output into a release-evidence artifact or directly reusable note payload
-- tighten Gemini fallback handling around default next steps and low-detail but technically valid responses
-- refresh README, matrix, risk, and release docs around the new production-readiness baseline
+- added `windows-latest` CI coverage alongside the existing `ubuntu-latest` lane for install, lint, typecheck, test, and build
+- turned smoke output into a reusable release-evidence note payload with optional `.json` and `.md` artifact emission
+- tightened Gemini fallback handling around default next steps and low-detail but technically valid responses
+- refreshed README, sprint, matrix, risk, and release docs around the updated production-readiness baseline
+
+Outstanding verification:
+
+- confirm the new GitHub Actions Windows lane on a remote run
+- rerun Windows real smoke cleanly after the current workstation Gemini timeout is resolved
 
 Exit bar:
 
@@ -500,8 +507,8 @@ Done when:
 
 ### Work That Should Happen Now
 
-- add Windows automation parity so the Windows-first real-operator path is not guarded only by manual smoke
-- reduce manual release-review work by generating reusable release evidence directly from the smoke workflow
+- keep Windows automation parity green so the Windows-first real-operator path is not guarded only by manual smoke
+- reduce manual release-review work by using generated release evidence directly from the smoke workflow
 - improve Gemini operator usefulness in real smoke without widening the shared participant contract
 - keep the Codex Desktop acceptance checklist, real-CLI smoke path, support-boundary wording, and release evidence docs aligned with runtime reality
 - preserve the current narrow macOS wording until an actual macOS environment is exercised
@@ -556,17 +563,17 @@ Mitigation:
 
 ### This Week
 
-- keep the diagnostics redaction defaults, subprocess guardrails, and Gemini normalization coverage green in CI
-- add and stabilize a `windows-latest` automation lane for the existing validation bar
+- keep the diagnostics redaction defaults, subprocess guardrails, and Gemini normalization coverage green in the `ubuntu-latest` plus `windows-latest` matrix
+- confirm the new `windows-latest` automation lane on a remote GitHub Actions run
 - keep the current release-evidence template and smoke output fields aligned whenever release review steps change
-- rerun the Windows smoke and Codex Desktop acceptance path whenever launcher or release-installation behavior changes
+- rerun the Windows smoke and Codex Desktop acceptance path whenever launcher, authentication, or release-installation behavior changes
 - review whether a real Linux CLI environment is actually available before broadening the current Windows-first support wording
 
 ### Next Implementation Priority
 
-1. Add Windows automation parity for install, lint, typecheck, test, and build so the Windows-first real-operator path is covered by CI as well as manual smoke.
-2. Generate reusable release evidence directly from the smoke workflow so maintainers do not manually reconstruct launcher, environment, and usefulness facts during release review.
-3. Keep Gemini operator usefulness reviewable through smoke-time classification and regression coverage while preserving the shared participant contract.
+1. Confirm the new Windows automation lane on a remote GitHub Actions run so the Windows-first real-operator path is covered by CI as well as manual smoke.
+2. Use generated release evidence directly from the smoke workflow so maintainers do not manually reconstruct launcher, environment, and usefulness facts during release review.
+3. Keep Gemini operator usefulness reviewable through smoke-time classification, plain-text next-step recovery, and regression coverage while preserving the shared participant contract.
 4. Expand real-CLI and OS verification beyond the current Windows-first statement only when additional environments are actually exercised.
 5. Treat Linux and macOS verification as separate evidence tracks; CI is acceptable Linux automation evidence, but do not claim macOS stability without an actual macOS run.
 6. Keep the Codex Desktop acceptance path, smoke evidence, test matrix, release-evidence template, and runbook aligned whenever release or installation behavior changes.

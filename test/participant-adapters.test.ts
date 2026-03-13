@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -69,10 +70,17 @@ test("gemini adapter parses response payloads and reuses persisted resume IDs", 
 
   const expectedGeminiCommand =
     process.platform === "win32"
-      ? path.join(process.env.APPDATA ?? "", "npm", "gemini.cmd")
+      ? existsSync(path.join(process.env.APPDATA ?? "", "npm", "gemini.cmd"))
+        ? path.join(process.env.APPDATA ?? "", "npm", "gemini.cmd")
+        : "gemini"
       : "gemini";
-  assert.equal(executor.calls[0]?.command, process.platform === "win32" ? (process.env.ComSpec ?? "cmd.exe") : expectedGeminiCommand);
-  if (process.platform === "win32") {
+  assert.equal(
+    executor.calls[0]?.command,
+    process.platform === "win32" && expectedGeminiCommand.endsWith(".cmd")
+      ? (process.env.ComSpec ?? "cmd.exe")
+      : expectedGeminiCommand
+  );
+  if (process.platform === "win32" && expectedGeminiCommand.endsWith(".cmd")) {
     assert.deepEqual(executor.calls[0]?.args.slice(0, 4), [
       "/d",
       "/s",
@@ -166,6 +174,31 @@ test("gemini adapter drops generic lead-in lines when a useful summary follows",
     assert.equal(
       result.output.summary,
       "Sprint 10 should keep the Windows-first support boundary narrow until Linux real smoke exists."
+    );
+  }
+});
+
+test("gemini adapter infers a concrete next step and supporting detail from plain-text prose", async () => {
+  const executor = new FakeCommandExecutor({
+    stdout: JSON.stringify({
+      response:
+        "Windows CI parity will catch launcher regressions on the OS that anchors operator evidence. Add a windows-latest validation lane before the next release review."
+    })
+  });
+  const adapters = createParticipantAdapters(executor);
+
+  const result = await adapters.gemini.run(buildAdapterInput());
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(
+      result.output.summary,
+      "Windows CI parity will catch launcher regressions on the OS that anchors operator evidence."
+    );
+    assert.deepEqual(result.output.arguments, []);
+    assert.equal(
+      result.output.proposed_next_step,
+      "Add a windows-latest validation lane before the next release review."
     );
   }
 });
@@ -292,9 +325,11 @@ test("participant prompt includes the Sprint 10 usefulness bar", () => {
 
   assert.match(prompt, /Make the summary topic-specific/i);
   assert.match(prompt, /ask one concrete topic question/i);
+  assert.match(prompt, /Provide at least one useful argument or one concrete question/i);
   assert.match(prompt, /Avoid generic filler/i);
   assert.match(prompt, /Do not ask for the objective/i);
   assert.match(prompt, /Do not say you are ready to participate/i);
+  assert.match(prompt, /Do not use a generic next step/i);
 });
 
 test("usefulness assessment flags generic fallback Gemini responses", () => {
@@ -332,6 +367,22 @@ test("usefulness assessment keeps topic-specific Gemini responses material", () 
 
   assert.equal(assessment.classification, "material");
   assert.ok(assessment.reasons.includes("missing_topic_terms") === false);
+});
+
+test("usefulness assessment treats thin topical responses with the default next step as fallback", () => {
+  const assessment = assessParticipantResponseUsefulness(
+    {
+      stance: "refine",
+      summary: "Windows CI parity is still missing from the current release posture.",
+      arguments: [],
+      questions: [],
+      proposed_next_step: "Continue the parley with the next participant response."
+    },
+    "Add Windows CI parity to the release validation bar."
+  );
+
+  assert.equal(assessment.classification, "generic_fallback");
+  assert.deepEqual(assessment.reasons, ["default_next_step", "no_supporting_detail"]);
 });
 
 test("adapter normalizes launcher override parse errors into process_error results", async () => {
