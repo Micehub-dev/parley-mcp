@@ -4,7 +4,7 @@
 
 Parley is an orchestrator-agnostic MCP server for running and managing multi-LLM parley sessions across Codex, Claude, and Gemini.
 
-The current codebase is at the verification and synthesis hardening stage:
+The current codebase is at the diagnostics access hardening stage:
 
 - Node.js + TypeScript
 - MCP server over stdio
@@ -19,6 +19,7 @@ The current codebase is at the verification and synthesis hardening stage:
 - structured participant output validation and resume ID persistence
 - diagnostic artifact persistence for failed step attempts
 - diagnostic inspection with replay/repair guidance
+- redacted-by-default diagnostic MCP views with explicit full-detail opt-in
 - next-safe repair action hints derived from diagnostics
 - automated service, adapter, and stdio MCP integration coverage
 
@@ -30,7 +31,7 @@ Read these files first before making changes:
 2. `multi-cli-parley-architecture.md`
 3. `docs/project-operating-plan.md`
 4. `docs/mcp-contract-spec.md`
-5. `docs/sprints/2026-sprint-6.md`
+5. `docs/sprints/2026-sprint-7.md`
 
 If code and docs disagree, prefer:
 
@@ -93,8 +94,8 @@ npm run dev
 Priority order for upcoming work:
 
 1. broader orchestrator matrix verification
-2. redaction and access rules for diagnostics-oriented helper surfaces
-3. packaging direction only after Sprint 6 hardening remains stable
+2. keep diagnostics access redacted-by-default unless operators explicitly request full detail
+3. packaging direction only after Sprint 7 diagnostics hardening remains stable
 4. broader OS and transport verification after the highest-risk orchestrator cases
 5. UI or extension work only as thin wrappers over the stable MCP core
 
@@ -137,4 +138,5 @@ Escalate before changing:
 - `parley_finish` returns a structured `conclusion`, and `parley_promote_summary` is the explicit bridge into topic memory.
 - `parley_search_topics` and `parley_get_workspace_board` are the current retrieval surfaces over promoted topic memory.
 - `parley_list_diagnostics` is the current operator-facing inspection surface; replay guidance and next-safe tool actions are derived at read time rather than stored in session state.
+- `parley_list_diagnostics` now returns redacted records by default; use `detailLevel: "full"` only for intentional local debugging.
 - Packaging for Claude plugins, Gemini extensions, and UI surfaces is explicitly later-phase work.

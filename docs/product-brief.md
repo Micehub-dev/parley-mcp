@@ -20,11 +20,13 @@
 - orchestrator-agnostic session management
 - participant adapter normalization
 - workspace-level memory accumulation
+- safe operator diagnostics inspection for downstream orchestrators
 
 ## Non-Goals
 
 - 초기 단계에서 완성형 UI 제공
 - 벤더별 독자 계약 분기
+- raw diagnostics exposure as the default cross-client behavior
 
 ## Success Metrics
 

@@ -374,8 +374,18 @@ test("stdio MCP participant failures stay structured and persist diagnostics", a
         };
         record: {
           outcome: string;
+          redaction?: {
+            hiddenFields: string[];
+          };
           participants: Array<{
             participant: string;
+            raw: {
+              command: string;
+              stderr: string;
+            };
+            redaction?: {
+              hiddenFields: string[];
+            };
             failureKind?: string;
           }>;
         };
@@ -383,6 +393,22 @@ test("stdio MCP participant failures stay structured and persist diagnostics", a
     }>(client, "parley_list_diagnostics", {
       parleySessionId: sessionId,
       failureKind: "process_error"
+    });
+    const fullDiagnostics = await callJsonTool<{
+      diagnostics: Array<{
+        record: {
+          participants: Array<{
+            raw: {
+              command: string;
+              stderr: string;
+            };
+          }>;
+        };
+      }>;
+    }>(client, "parley_list_diagnostics", {
+      parleySessionId: sessionId,
+      failureKind: "process_error",
+      detailLevel: "full"
     });
 
     const diagnosticsDir = path.join(repoRoot, ".multi-llm", "sessions", sessionId, "diagnostics");
@@ -407,9 +433,32 @@ test("stdio MCP participant failures stay structured and persist diagnostics", a
     assert.equal(diagnostics.parleySessionId, sessionId);
     assert.equal(diagnostics.diagnostics.length, 1);
     assert.equal(diagnostics.diagnostics[0]?.record.outcome, "participant_failure");
+    const redactedGeminiParticipant = diagnostics.diagnostics[0]?.record.participants.find(
+      (participant) => participant.participant === "gemini"
+    );
+    assert.equal(redactedGeminiParticipant?.raw.command, "[redacted]");
+    assert.match(
+      redactedGeminiParticipant?.raw.stderr ?? "",
+      /\[redacted \d+ chars\]/i
+    );
+    assert.deepEqual(diagnostics.diagnostics[0]?.record.redaction?.hiddenFields, []);
+    assert.deepEqual(redactedGeminiParticipant?.redaction?.hiddenFields, [
+      "raw.command",
+      "raw.args",
+      "raw.stdout",
+      "raw.stderr"
+    ]);
     assert.equal(diagnostics.diagnostics[0]?.repairGuidance.canRetrySameVersion, true);
     assert.equal(diagnostics.diagnostics[0]?.repairGuidance.shouldReadStateFirst, false);
     assert.equal(diagnostics.diagnostics[0]?.repairGuidance.nextAction.tool, "parley_step");
+    const fullGeminiParticipant = fullDiagnostics.diagnostics[0]?.record.participants.find(
+      (participant) => participant.raw.stderr.includes("Gemini simulated failure")
+    );
+    assert.equal(fullGeminiParticipant?.raw.command, process.execPath);
+    assert.match(
+      fullGeminiParticipant?.raw.stderr ?? "",
+      /Gemini simulated failure/
+    );
   } finally {
     await transport.close().catch(() => undefined);
     if (sessionId) {

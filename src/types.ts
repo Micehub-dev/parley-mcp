@@ -182,6 +182,52 @@ export interface SessionDiagnosticRecord {
   participants: SessionDiagnosticParticipant[];
 }
 
+export type DiagnosticDetailLevel = "redacted" | "full";
+
+export interface DiagnosticRedactionInfo {
+  detailLevel: DiagnosticDetailLevel;
+  hiddenFields: string[];
+}
+
+export interface SessionDiagnosticParticipantView {
+  participant: ParticipantKind;
+  model: string;
+  status: "ok" | "failed" | "invalid_output";
+  raw: {
+    command: string;
+    args: string[];
+    stdout: string;
+    stderr: string;
+    exitCode: number | null;
+  };
+  resumeId?: string;
+  response?: ParticipantResponse;
+  failureKind?: "process_error" | "invalid_output";
+  message?: string;
+  retryable?: boolean;
+  redaction?: DiagnosticRedactionInfo;
+}
+
+export interface SessionDiagnosticRecordView {
+  sessionId: string;
+  turn: number;
+  expectedStateVersion: number;
+  orchestratorRunId: string;
+  speakerOrder: ParticipantKind[];
+  userNudge?: string;
+  startedAt: string;
+  completedAt: string;
+  outcome: "participant_failure" | "storage_failure";
+  stateCommitStatus: "not_committed" | "session_state_committed";
+  lease: {
+    leaseOwner: string | null;
+    leaseExpiresAt: string | null;
+    active: boolean;
+  };
+  participants: SessionDiagnosticParticipantView[];
+  redaction?: DiagnosticRedactionInfo;
+}
+
 export interface DiagnosticRepairAction {
   tool: "parley_state" | "parley_step";
   arguments: Record<string, unknown>;

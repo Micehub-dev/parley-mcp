@@ -13,7 +13,9 @@
 | Codex | N/A | Windows | service | topic search matches promoted knowledge fields and tag filters | Implemented |
 | Codex | N/A | Windows | service | workspace board retrieval returns status columns and promoted digests | Implemented |
 | Codex | N/A | Windows | service | persisted diagnostics return repair guidance and replay hints | Implemented |
+| Codex | N/A | Windows | service | diagnostics are redacted by default and expose full detail only when explicitly requested | Implemented |
 | Claude | Claude + Gemini | Windows | stdio | resume with stored session | Implemented |
 | Gemini | Claude + Gemini | Windows | stdio | lease conflict handling | Implemented |
+| Gemini | Claude + Gemini | Windows | stdio | diagnostics MCP inspection supports redacted default and explicit full-detail opt-in | Implemented |
 | Codex | N/A | Windows | service | synthesis deduplicates repeated questions/action items and excludes undecided turns from consensus | Implemented |
 | Codex | N/A | Windows | service | diagnostics include next-safe repair action hints for replay-boundary follow-up | Implemented |

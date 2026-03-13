@@ -1013,7 +1013,7 @@ test("getWorkspaceBoard returns status columns and promoted memory digests", asy
   }
 });
 
-test("listDiagnostics returns operator repair guidance for persisted failures", async () => {
+test("listDiagnostics redacts raw diagnostic details by default and exposes full details on demand", async () => {
   const fixture = await createFixture(
     createMockAdapters({
       claude: async () =>
@@ -1056,9 +1056,24 @@ test("listDiagnostics returns operator repair guidance for persisted failures", 
       parleySessionId: started.parleySessionId,
       failureKind: "process_error"
     });
+    const fullDiagnostics = await fixture.service.listDiagnostics({
+      parleySessionId: started.parleySessionId,
+      failureKind: "process_error",
+      detailLevel: "full"
+    });
 
     assert.equal(diagnostics.diagnostics.length, 1);
     assert.equal(diagnostics.diagnostics[0]?.record.participants[0]?.participant, "claude");
+    assert.equal(diagnostics.diagnostics[0]?.record.participants[0]?.raw.command, "[redacted]");
+    assert.equal(diagnostics.diagnostics[0]?.record.participants[0]?.raw.stderr, "");
+    assert.equal(diagnostics.diagnostics[0]?.record.participants[0]?.resumeId, undefined);
+    assert.equal(diagnostics.diagnostics[0]?.record.participants[0]?.response, undefined);
+    assert.deepEqual(diagnostics.diagnostics[0]?.record.participants[0]?.redaction?.hiddenFields, [
+      "raw.command",
+      "raw.args",
+      "raw.stdout",
+      "raw.stderr"
+    ]);
     assert.equal(diagnostics.diagnostics[0]?.repairGuidance.canRetrySameVersion, true);
     assert.equal(diagnostics.diagnostics[0]?.repairGuidance.shouldReadStateFirst, false);
     assert.equal(diagnostics.diagnostics[0]?.repairGuidance.nextAction.tool, "parley_step");
@@ -1070,6 +1085,10 @@ test("listDiagnostics returns operator repair guidance for persisted failures", 
       diagnostics.diagnostics[0]?.repairGuidance.recommendedSteps.join(" ") ?? "",
       /launcher command/i
     );
+    assert.equal(fullDiagnostics.diagnostics[0]?.record.participants[0]?.raw.command, "claude");
+    assert.equal(fullDiagnostics.diagnostics[0]?.record.participants[0]?.raw.stderr, "");
+    assert.equal(fullDiagnostics.diagnostics[0]?.record.redaction, undefined);
+    assert.equal(fullDiagnostics.diagnostics[0]?.record.participants[0]?.redaction, undefined);
   } finally {
     await fixture.cleanup();
   }

@@ -415,16 +415,18 @@ export async function startServer(): Promise<void> {
       outcome: z.enum(["participant_failure", "storage_failure"]).optional(),
       participant: z.enum(["claude", "gemini"]).optional(),
       failureKind: z.enum(["process_error", "invalid_output"]).optional(),
-      limit: z.number().int().positive().max(100).default(20)
+      limit: z.number().int().positive().max(100).default(20),
+      detailLevel: z.enum(["redacted", "full"]).default("redacted")
     },
-    async ({ parleySessionId, outcome, participant, failureKind, limit }) =>
+    async ({ parleySessionId, outcome, participant, failureKind, limit, detailLevel }) =>
       executeTool(async () => {
       const diagnostics = await parleyService.listDiagnostics({
         parleySessionId,
         ...(outcome ? { outcome } : {}),
         ...(participant ? { participant } : {}),
         ...(failureKind ? { failureKind } : {}),
-        limit
+        limit,
+        detailLevel
       });
 
       return {

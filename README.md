@@ -36,6 +36,7 @@ Most AI tooling gets trapped inside one client surface. Parley takes the opposit
 - Topic-memory search across promoted summaries, open questions, action items, and tags
 - Workspace board digests for status-oriented topic retrieval
 - Operator-facing diagnostic inspection with replay and repair guidance
+- Redacted-by-default diagnostic MCP views with explicit full-detail opt-in for local debugging
 - Next-safe repair actions derived from persisted diagnostics for replay-boundary follow-up
 
 ## Architecture
@@ -55,7 +56,7 @@ flowchart LR
 
 ## Current Status
 
-The repository is currently at the **verification and synthesis hardening** stage.
+The repository is currently at the **diagnostics access hardening** stage.
 
 - MCP server skeleton and core session lifecycle are implemented
 - Filesystem-backed storage is implemented
@@ -67,6 +68,7 @@ The repository is currently at the **verification and synthesis hardening** stag
 - `parley_search_topics` retrieves promoted topic memory across summaries, questions, actions, and tags
 - `parley_get_workspace_board` exposes board-style workspace digests for downstream clients
 - `parley_list_diagnostics` exposes failed step diagnostics with operator repair guidance and next-safe tool actions
+- `parley_list_diagnostics` now redacts raw subprocess details by default and requires explicit `detailLevel: "full"` opt-in for full MCP detail
 - rolling summary, conclusion, and promoted topic memory now deduplicate repeated questions/action items and emit more compact synthesis text
 - stdio integration coverage now exercises participant resume reuse and lease-conflict handling across orchestrator-labeled runs
 - Structured MCP tool errors now return machine-readable JSON envelopes with `isError: true`
@@ -136,8 +138,8 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 
 ## Roadmap
 
-- Keep packaging direction downstream of the now-stable Sprint 6 hardening bar
-- Expand redaction/access guidance before diagnostics-oriented helper surfaces grow further
+- Keep packaging direction downstream of the now-stable Sprint 7 diagnostics hardening bar
+- Keep diagnostics access rules stable before diagnostics-oriented helper surfaces grow further
 - Package thin surfaces for plugins, extensions, and future UI layers only after those safeguards stay stable
 
 ## Use Cases
