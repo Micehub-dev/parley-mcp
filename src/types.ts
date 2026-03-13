@@ -107,6 +107,81 @@ export interface TopicRecord {
   }>;
 }
 
+export interface TopicSearchResult {
+  topic: TopicRecord;
+  matchedFields: string[];
+  score: number;
+}
+
+export interface TopicBoardCard {
+  topicId: string;
+  title: string;
+  status: TopicRecord["status"];
+  tags: string[];
+  updatedAt: string;
+  linkedSessionCount: number;
+  openQuestionCount: number;
+  actionItemCount: number;
+  hasDecisionSummary: boolean;
+  decisionSummary?: string;
+  canonicalSummary?: string;
+}
+
+export interface WorkspaceBoard {
+  workspaceId: string;
+  topicCount: number;
+  lastUpdatedAt?: string;
+  statusCounts: Record<TopicRecord["status"], number>;
+  board: Record<TopicRecord["status"], TopicBoardCard[]>;
+  openQuestions: Array<{
+    topicId: string;
+    title: string;
+    question: string;
+  }>;
+  actionItems: Array<{
+    topicId: string;
+    title: string;
+    actionItem: string;
+  }>;
+}
+
+export interface SessionDiagnosticParticipant {
+  participant: ParticipantKind;
+  model: string;
+  status: "ok" | "failed" | "invalid_output";
+  raw: {
+    command: string;
+    args: string[];
+    stdout: string;
+    stderr: string;
+    exitCode: number | null;
+  };
+  resumeId?: string;
+  response?: ParticipantResponse;
+  failureKind?: "process_error" | "invalid_output";
+  message?: string;
+  retryable?: boolean;
+}
+
+export interface SessionDiagnosticRecord {
+  sessionId: string;
+  turn: number;
+  expectedStateVersion: number;
+  orchestratorRunId: string;
+  speakerOrder: ParticipantKind[];
+  userNudge?: string;
+  startedAt: string;
+  completedAt: string;
+  outcome: "participant_failure" | "storage_failure";
+  stateCommitStatus: "not_committed" | "session_state_committed";
+  lease: {
+    leaseOwner: string | null;
+    leaseExpiresAt: string | null;
+    active: boolean;
+  };
+  participants: SessionDiagnosticParticipant[];
+}
+
 export interface TranscriptEntry {
   timestamp: string;
   kind: "system" | "orchestrator" | "participant";

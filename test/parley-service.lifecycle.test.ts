@@ -540,6 +540,11 @@ test("advanceStep surfaces replay boundary when transcript append fails after st
     assert.equal(state.turn, 1);
     assert.ok(state.latestTurn);
 
+    const diagnostics = await service.listDiagnostics({
+      parleySessionId: started.parleySessionId,
+      outcome: "storage_failure"
+    });
+
     const diagnosticsDir = path.join(
       rootDir,
       ".multi-llm",
@@ -559,6 +564,9 @@ test("advanceStep surfaces replay boundary when transcript append fails after st
 
     assert.equal(diagnostic.outcome, "storage_failure");
     assert.equal(diagnostic.stateCommitStatus, "session_state_committed");
+    assert.equal(diagnostics.diagnostics.length, 1);
+    assert.equal(diagnostics.diagnostics[0]?.repairGuidance.shouldReadStateFirst, true);
+    assert.equal(diagnostics.diagnostics[0]?.repairGuidance.canRetrySameVersion, false);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -799,6 +807,174 @@ test("promoteSummary rejects unfinished sessions before mutating topic memory", 
   }
 });
 
+test("searchTopics matches promoted memory fields and tag filters", async () => {
+  const fixture = await createFixture();
+
+  try {
+    const now = new Date().toISOString();
+    await fixture.store.createTopic(
+      createTopicRecord({
+        topicId: "topic-search-1",
+        createdAt: now,
+        updatedAt: now,
+        title: "Release rollout",
+        body: "Track the rollout plan",
+        tags: ["ops", "release"],
+        decisionSummary: "Use a phased rollout with a rollback checklist.",
+        canonicalSummary: "Phased rollout remains the preferred release plan.",
+        openQuestions: ["Who owns the rollback checklist?"],
+        actionItems: ["Publish the rollback checklist."]
+      })
+    );
+    await fixture.store.createTopic(
+      createTopicRecord({
+        topicId: "topic-search-2",
+        createdAt: now,
+        updatedAt: new Date(Date.now() - 60_000).toISOString(),
+        title: "Prompt tuning",
+        body: "Tune synthesis prompts",
+        tags: ["research"],
+        actionItems: ["Review the synthesis prompt wording."]
+      })
+    );
+
+    const result = await fixture.service.searchTopics({
+      workspaceId: "default",
+      query: "rollback checklist",
+      tags: ["ops"]
+    });
+
+    assert.equal(result.results.length, 1);
+    assert.equal(result.results[0]?.topic.topicId, "topic-search-1");
+    assert.deepEqual(result.results[0]?.matchedFields, [
+      "decisionSummary",
+      "openQuestions",
+      "actionItems"
+    ]);
+    assert.equal(result.results[0]?.score, 8);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("getWorkspaceBoard returns status columns and promoted memory digests", async () => {
+  const fixture = await createFixture();
+
+  try {
+    const now = new Date().toISOString();
+    await fixture.store.createTopic(
+      createTopicRecord({
+        topicId: "topic-board-open",
+        createdAt: now,
+        updatedAt: now,
+        title: "Open topic",
+        status: "open",
+        openQuestions: ["What is the remaining blocker?"],
+        actionItems: ["Assign an owner."]
+      })
+    );
+    await fixture.store.createTopic(
+      createTopicRecord({
+        topicId: "topic-board-progress",
+        createdAt: now,
+        updatedAt: new Date(Date.now() - 30_000).toISOString(),
+        title: "Progress topic",
+        status: "in_progress",
+        linkedSessionIds: ["parley-1"],
+        decisionSummary: "The rollout is moving forward."
+      })
+    );
+    await fixture.store.createTopic(
+      createTopicRecord({
+        topicId: "topic-board-resolved",
+        createdAt: now,
+        updatedAt: new Date(Date.now() - 120_000).toISOString(),
+        title: "Resolved topic",
+        status: "resolved",
+        decisionSummary: "Decision is final.",
+        canonicalSummary: "Decision is final and documented.",
+        actionItems: ["Share the final note."]
+      })
+    );
+
+    const board = await fixture.service.getWorkspaceBoard({
+      workspaceId: "default",
+      limit: 2
+    });
+
+    assert.equal(board.topicCount, 3);
+    assert.deepEqual(board.statusCounts, {
+      open: 1,
+      in_progress: 1,
+      resolved: 1
+    });
+    assert.equal(board.board.open[0]?.topicId, "topic-board-open");
+    assert.equal(board.board.in_progress[0]?.linkedSessionCount, 1);
+    assert.equal(board.board.resolved[0]?.hasDecisionSummary, true);
+    assert.equal(board.openQuestions[0]?.topicId, "topic-board-open");
+    assert.equal(board.actionItems[0]?.topicId, "topic-board-open");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("listDiagnostics returns operator repair guidance for persisted failures", async () => {
+  const fixture = await createFixture(
+    createMockAdapters({
+      claude: async () =>
+        failureResult("claude", "process_error", "Claude CLI exited with code 17.", {
+          exitCode: 17
+        }),
+      gemini: async () => successResult("gemini", buildResponse("refine", "Gemini would succeed."))
+    }).adapters
+  );
+
+  try {
+    const started = await fixture.service.startSession({
+      workspaceId: "default",
+      workspaceRoot: fixture.rootDir,
+      topic: "Diagnostic listing",
+      orchestrator: "codex",
+      orchestratorRunId: "run-115"
+    });
+    const lease = await fixture.service.claimLease({
+      parleySessionId: started.parleySessionId,
+      orchestratorRunId: "run-115",
+      ttlSeconds: 300
+    });
+
+    await assert.rejects(
+      () =>
+        fixture.service.advanceStep({
+          parleySessionId: started.parleySessionId,
+          expectedStateVersion: lease.stateVersion,
+          orchestratorRunId: "run-115"
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ParleyError);
+        assert.equal(error.code, "participant_failure");
+        return true;
+      }
+    );
+
+    const diagnostics = await fixture.service.listDiagnostics({
+      parleySessionId: started.parleySessionId,
+      failureKind: "process_error"
+    });
+
+    assert.equal(diagnostics.diagnostics.length, 1);
+    assert.equal(diagnostics.diagnostics[0]?.record.participants[0]?.participant, "claude");
+    assert.equal(diagnostics.diagnostics[0]?.repairGuidance.canRetrySameVersion, true);
+    assert.equal(diagnostics.diagnostics[0]?.repairGuidance.shouldReadStateFirst, false);
+    assert.match(
+      diagnostics.diagnostics[0]?.repairGuidance.recommendedSteps.join(" ") ?? "",
+      /launcher command/i
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("advanceStep exposes when diagnostic persistence fails during participant failure handling", async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), "parley-sprint3-diagnostic-"));
   const store = new FaultyDiagnosticStore(rootDir);
@@ -880,6 +1056,38 @@ function buildResponse(stance: ParticipantResponse["stance"], summary: string): 
     arguments: [`${summary} Argument.`],
     questions: [`${summary} Question?`],
     proposed_next_step: `${summary} Next step.`
+  };
+}
+
+function createTopicRecord(
+  overrides: Partial<import("../src/types.js").TopicRecord> & {
+    topicId: string;
+    createdAt: string;
+    updatedAt: string;
+    title?: string;
+  }
+): import("../src/types.js").TopicRecord {
+  return {
+    topicId: overrides.topicId,
+    workspaceId: overrides.workspaceId ?? "default",
+    title: overrides.title ?? overrides.topicId,
+    body: overrides.body ?? "",
+    status: overrides.status ?? "open",
+    tags: overrides.tags ?? [],
+    createdAt: overrides.createdAt,
+    updatedAt: overrides.updatedAt,
+    linkedSessionIds: overrides.linkedSessionIds ?? [],
+    keyThreadIds: overrides.keyThreadIds ?? [],
+    ...(overrides.decisionSummary ? { decisionSummary: overrides.decisionSummary } : {}),
+    openQuestions: overrides.openQuestions ?? [],
+    actionItems: overrides.actionItems ?? [],
+    ...(overrides.canonicalSummary ? { canonicalSummary: overrides.canonicalSummary } : {}),
+    statusHistory: overrides.statusHistory ?? [
+      {
+        status: overrides.status ?? "open",
+        changedAt: overrides.createdAt
+      }
+    ]
   };
 }
 

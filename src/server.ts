@@ -106,25 +106,55 @@ export async function startServer(): Promise<void> {
     {
       workspaceId: z.string().default("default"),
       status: z.enum(["open", "in_progress", "resolved"]).optional(),
-      query: z.string().optional()
+      query: z.string().optional(),
+      tags: z.array(z.string().min(1)).optional()
     },
-    async ({ workspaceId, status, query }) =>
+    async ({ workspaceId, status, query, tags }) =>
       executeTool(async () => {
-      const topics = await store.listTopics(workspaceId);
-      const normalizedQuery = query?.toLowerCase();
-      const filtered = topics.filter((topic) => {
-        const statusMatches = status ? topic.status === status : true;
-        const queryMatches = normalizedQuery
-          ? `${topic.title}\n${topic.body}`.toLowerCase().includes(normalizedQuery)
-          : true;
-        return statusMatches && queryMatches;
+      const search = await parleyService.searchTopics({
+        workspaceId,
+        ...(status ? { status } : {}),
+        ...(query ? { query } : {}),
+        ...(tags ? { tags } : {}),
+        limit: Number.MAX_SAFE_INTEGER
       });
 
       return {
         content: [
           {
             type: "text",
-            text: JSON.stringify({ topics: filtered }, null, 2)
+            text: JSON.stringify({ topics: search.results.map((result) => result.topic) }, null, 2)
+          }
+        ]
+      };
+      })
+  );
+
+  server.tool(
+    "parley_search_topics",
+    "Search topic memory across promoted summaries, open questions, and action items.",
+    {
+      workspaceId: z.string().default("default"),
+      status: z.enum(["open", "in_progress", "resolved"]).optional(),
+      query: z.string().optional(),
+      tags: z.array(z.string().min(1)).optional(),
+      limit: z.number().int().positive().max(100).default(20)
+    },
+    async ({ workspaceId, status, query, tags, limit }) =>
+      executeTool(async () => {
+      const result = await parleyService.searchTopics({
+        workspaceId,
+        ...(status ? { status } : {}),
+        ...(query ? { query } : {}),
+        ...(tags ? { tags } : {}),
+        limit
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2)
           }
         ]
       };
@@ -151,7 +181,51 @@ export async function startServer(): Promise<void> {
         content: [
           {
             type: "text",
-            text: JSON.stringify({ topic }, null, 2)
+            text: JSON.stringify(
+              {
+                topic,
+                boardCard: {
+                  topicId: topic.topicId,
+                  title: topic.title,
+                  status: topic.status,
+                  tags: topic.tags,
+                  updatedAt: topic.updatedAt,
+                  linkedSessionCount: topic.linkedSessionIds.length,
+                  openQuestionCount: topic.openQuestions.length,
+                  actionItemCount: topic.actionItems.length,
+                  hasDecisionSummary: Boolean(topic.decisionSummary),
+                  ...(topic.decisionSummary ? { decisionSummary: topic.decisionSummary } : {}),
+                  ...(topic.canonicalSummary ? { canonicalSummary: topic.canonicalSummary } : {})
+                }
+              },
+              null,
+              2
+            )
+          }
+        ]
+      };
+      })
+  );
+
+  server.tool(
+    "parley_get_workspace_board",
+    "Return a board-style workspace digest over promoted topic memory.",
+    {
+      workspaceId: z.string().default("default"),
+      limit: z.number().int().positive().max(100).default(10)
+    },
+    async ({ workspaceId, limit }) =>
+      executeTool(async () => {
+      const board = await parleyService.getWorkspaceBoard({
+        workspaceId,
+        limit
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(board, null, 2)
           }
         ]
       };
@@ -327,6 +401,37 @@ export async function startServer(): Promise<void> {
           {
             type: "text",
             text: JSON.stringify(result, null, 2)
+          }
+        ]
+      };
+      })
+  );
+
+  server.tool(
+    "parley_list_diagnostics",
+    "Inspect persisted step diagnostics and operator repair guidance for a session.",
+    {
+      parleySessionId: z.string().min(1),
+      outcome: z.enum(["participant_failure", "storage_failure"]).optional(),
+      participant: z.enum(["claude", "gemini"]).optional(),
+      failureKind: z.enum(["process_error", "invalid_output"]).optional(),
+      limit: z.number().int().positive().max(100).default(20)
+    },
+    async ({ parleySessionId, outcome, participant, failureKind, limit }) =>
+      executeTool(async () => {
+      const diagnostics = await parleyService.listDiagnostics({
+        parleySessionId,
+        ...(outcome ? { outcome } : {}),
+        ...(participant ? { participant } : {}),
+        ...(failureKind ? { failureKind } : {}),
+        limit
+      });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(diagnostics, null, 2)
           }
         ]
       };

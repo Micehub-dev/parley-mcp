@@ -16,7 +16,7 @@ Parley's primary goal is to provide an orchestrator-agnostic MCP server that let
 
 ### Current Product Stage
 
-As of 2026-03-12, the repository is beyond the bootstrap, placeholder, and runtime-only phases.
+As of 2026-03-13, the repository is beyond the bootstrap, placeholder, and runtime-only phases.
 
 - Core session lifecycle is implemented.
 - `parley_step` executes real participant subprocesses.
@@ -25,9 +25,11 @@ As of 2026-03-12, the repository is beyond the bootstrap, placeholder, and runti
 - `parley_finish` returns a structured `conclusion`.
 - Finished sessions can be promoted into linked topics through `parley_promote_summary`.
 - Failed step attempts write diagnostics under `.multi-llm/sessions/<sessionId>/diagnostics/`.
+- Promoted topic memory is now searchable through dedicated MCP tooling.
+- Workspace boards and operator-facing diagnostic inspection are now exposed through MCP tools.
 - Automated coverage exists at the service, adapter, and stdio MCP integration layers.
 
-The next product gap is expanding retrieval and operator ergonomics on top of the new knowledge artifacts rather than adding more execution-only behavior.
+The next product gap is improving synthesis quality, repair ergonomics, and broader orchestrator verification on top of the now-stable Sprint 5 retrieval and operator surfaces.
 
 ## 2. Working Source Of Truth
 
@@ -249,6 +251,10 @@ Goal:
 - expand topic and workspace retrieval capabilities
 - strengthen cross-client verification coverage
 
+Status:
+
+- Functionally complete
+
 Planned scope:
 
 - diagnostic reader or operator-facing inspection surface
@@ -403,13 +409,13 @@ Mitigation:
 
 ### This Week
 
-- align planning docs with the implemented Sprint 4 knowledge-persistence state
-- freeze Sprint 5 operator-tooling and retrieval scope
-- identify any repair or inspection surface needed on top of persisted diagnostics
+- align planning docs with the implemented Sprint 5 retrieval and operator state
+- review remaining orchestrator coverage gaps after the new `claude` and `gemini`-labeled stdio scenarios
+- identify whether Sprint 6 should prioritize synthesis refinement or packaging preparation first
 
 ### Next Implementation Priority
 
-1. Add workspace and topic search on top of promoted knowledge.
-2. Expose operator-facing diagnostic and repair tooling.
-3. Broaden orchestrator verification coverage beyond the current happy path.
-4. Revisit heuristic synthesis quality only after retrieval and operator flows are in place.
+1. Broaden orchestrator verification coverage beyond the current Windows-first stdio matrix.
+2. Revisit heuristic synthesis quality now that retrieval and board surfaces exist.
+3. Add minimal repair helpers only where diagnostic inspection still leaves operators blocked.
+4. Plan packaging direction on top of the stable Sprint 5 MCP surface.

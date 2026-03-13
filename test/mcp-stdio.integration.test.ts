@@ -10,7 +10,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
-test("stdio MCP flow supports start -> claim_lease -> step -> finish", async () => {
+test("stdio MCP flow supports start -> claim_lease -> step -> finish -> promote -> search -> board", async () => {
   const binDir = await mkdtemp(path.join(os.tmpdir(), "parley-e2e-bin-"));
   const stderrLines: string[] = [];
   let sessionId: string | undefined;
@@ -58,7 +58,7 @@ test("stdio MCP flow supports start -> claim_lease -> step -> finish", async () 
       topic: "MCP integration",
       topicId,
       maxTurns: 1,
-      orchestrator: "codex",
+      orchestrator: "claude",
       orchestratorRunId: "e2e-run-001"
     });
     sessionId = started.parleySessionId;
@@ -131,6 +131,38 @@ test("stdio MCP flow supports start -> claim_lease -> step -> finish", async () 
     }>(client, "parley_promote_summary", {
       parleySessionId: sessionId
     });
+    const searched = await callJsonTool<{
+      workspaceId: string;
+      results: Array<{
+        matchedFields: string[];
+        score: number;
+        topic: {
+          topicId: string;
+          decisionSummary?: string;
+        };
+      }>;
+    }>(client, "parley_search_topics", {
+      workspaceId: "default",
+      query: "integration response"
+    });
+    const board = await callJsonTool<{
+      workspaceId: string;
+      topicCount: number;
+      statusCounts: {
+        open: number;
+        in_progress: number;
+        resolved: number;
+      };
+      board: {
+        resolved: Array<{
+          topicId: string;
+          hasDecisionSummary: boolean;
+        }>;
+      };
+    }>(client, "parley_get_workspace_board", {
+      workspaceId: "default",
+      limit: 5
+    });
 
     assert.equal(started.maxTurns, 1);
     assert.equal(claimed.leaseOwner, "e2e-run-001");
@@ -152,6 +184,14 @@ test("stdio MCP flow supports start -> claim_lease -> step -> finish", async () 
     assert.ok(promoted.updatedFields.includes("decisionSummary"));
     assert.equal(promoted.topic.status, "resolved");
     assert.match(promoted.topic.decisionSummary ?? "", /Claude integration response/);
+    assert.equal(searched.workspaceId, "default");
+    assert.equal(searched.results[0]?.topic.topicId, topicId);
+    assert.ok(searched.results[0]?.matchedFields.includes("decisionSummary"));
+    assert.equal(board.workspaceId, "default");
+    assert.equal(board.topicCount, 1);
+    assert.equal(board.statusCounts.resolved, 1);
+    assert.equal(board.board.resolved[0]?.topicId, topicId);
+    assert.equal(board.board.resolved[0]?.hasDecisionSummary, true);
 
     const transcript = await readFile(
       path.join(repoRoot, ".multi-llm", "sessions", sessionId, "transcript.jsonl"),
@@ -280,7 +320,7 @@ test("stdio MCP participant failures stay structured and persist diagnostics", a
       parleySessionId: string;
     }>(client, "parley_start", {
       topic: "MCP participant failure",
-      orchestrator: "codex",
+      orchestrator: "gemini",
       orchestratorRunId: "e2e-run-003"
     });
     sessionId = started.parleySessionId;
@@ -321,6 +361,27 @@ test("stdio MCP participant failures stay structured and persist diagnostics", a
     assert.equal(payload.error.details?.retryable, true);
     assert.equal(payload.error.details?.diagnosticsPersisted, true);
 
+    const diagnostics = await callJsonTool<{
+      parleySessionId: string;
+      diagnostics: Array<{
+        diagnosticId: string;
+        repairGuidance: {
+          canRetrySameVersion: boolean;
+          shouldReadStateFirst: boolean;
+        };
+        record: {
+          outcome: string;
+          participants: Array<{
+            participant: string;
+            failureKind?: string;
+          }>;
+        };
+      }>;
+    }>(client, "parley_list_diagnostics", {
+      parleySessionId: sessionId,
+      failureKind: "process_error"
+    });
+
     const diagnosticsDir = path.join(repoRoot, ".multi-llm", "sessions", sessionId, "diagnostics");
     const diagnosticFiles = await readdir(diagnosticsDir);
     assert.equal(diagnosticFiles.length, 1);
@@ -340,6 +401,11 @@ test("stdio MCP participant failures stay structured and persist diagnostics", a
       (participant) => participant.participant === "gemini"
     );
     assert.equal(geminiDiagnostic?.failureKind, "process_error");
+    assert.equal(diagnostics.parleySessionId, sessionId);
+    assert.equal(diagnostics.diagnostics.length, 1);
+    assert.equal(diagnostics.diagnostics[0]?.record.outcome, "participant_failure");
+    assert.equal(diagnostics.diagnostics[0]?.repairGuidance.canRetrySameVersion, true);
+    assert.equal(diagnostics.diagnostics[0]?.repairGuidance.shouldReadStateFirst, false);
   } finally {
     await transport.close().catch(() => undefined);
     if (sessionId) {

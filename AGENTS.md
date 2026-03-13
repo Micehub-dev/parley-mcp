@@ -4,7 +4,7 @@
 
 Parley is an orchestrator-agnostic MCP server for running and managing multi-LLM parley sessions across Codex, Claude, and Gemini.
 
-The current codebase is at the knowledge-synthesis and topic-promotion stage:
+The current codebase is at the operator-tooling and knowledge-layer expansion stage:
 
 - Node.js + TypeScript
 - MCP server over stdio
@@ -14,8 +14,11 @@ The current codebase is at the knowledge-synthesis and topic-promotion stage:
 - rolling summary accumulation across committed participant turns
 - structured conclusion generation at `parley_finish`
 - explicit topic promotion through `parley_promote_summary`
+- promoted topic-memory search across summaries, questions, actions, and tags
+- workspace board retrieval for downstream clients
 - structured participant output validation and resume ID persistence
 - diagnostic artifact persistence for failed step attempts
+- diagnostic inspection with replay/repair guidance
 - automated service, adapter, and stdio MCP integration coverage
 
 ## Source Of Truth
@@ -88,11 +91,11 @@ npm run dev
 
 Priority order for upcoming work:
 
-1. workspace/topic search and topic board expansion
-2. operator-facing diagnostics, timeout, and retry ergonomics
-3. broader orchestrator matrix verification
-4. topic memory refinement beyond first-pass heuristic synthesis
-5. packaging and external surfaces only after Sprint 5 scope is stable
+1. broader orchestrator matrix verification
+2. topic memory refinement beyond first-pass heuristic synthesis
+3. repair-oriented helper tooling on top of the diagnostic inspection surface
+4. packaging and external surfaces only after Sprint 5 scope is stable
+5. UI or extension work only as thin wrappers over the stable MCP core
 
 Do not jump ahead to UI or packaging unless the current sprint says so.
 
@@ -131,4 +134,6 @@ Escalate before changing:
 - `parley_step` executes real participant adapters, validates structured output, persists resume IDs, and writes diagnostics on failure.
 - `rollingSummary` is now the preferred machine-readable session synthesis field, while `latestSummary` remains as a compatibility string.
 - `parley_finish` returns a structured `conclusion`, and `parley_promote_summary` is the explicit bridge into topic memory.
+- `parley_search_topics` and `parley_get_workspace_board` are the current retrieval surfaces over promoted topic memory.
+- `parley_list_diagnostics` is the current operator-facing inspection surface; replay guidance is derived at read time rather than stored in session state.
 - Packaging for Claude plugins, Gemini extensions, and UI surfaces is explicitly later-phase work.

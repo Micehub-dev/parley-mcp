@@ -5,6 +5,7 @@
 This document tracks the implemented MCP contract for the current runtime.
 
 - Sprint 4 rolling summary, structured conclusion, and explicit topic promotion are now implemented.
+- Sprint 5 search, workspace-board retrieval, and diagnostic inspection surfaces are now implemented.
 - Compatibility string fields remain in place so existing orchestrators can migrate additively.
 - The design rationale and frozen migration rules still live in `docs/decisions/ADR-0001-sprint-4-synthesis-contract.md`.
 
@@ -22,6 +23,9 @@ This document tracks the implemented MCP contract for the current runtime.
 - `parley_create_topic`
 - `parley_list_topics`
 - `parley_get_topic`
+- `parley_search_topics`
+- `parley_get_workspace_board`
+- `parley_list_diagnostics`
 
 ## Contract Rules
 
@@ -359,14 +363,173 @@ Implemented tools:
 - `parley_create_topic`
 - `parley_list_topics`
 - `parley_get_topic`
+- `parley_search_topics`
+- `parley_get_workspace_board`
+- `parley_list_diagnostics`
 
 Behavior notes:
 
 - Topic records are filesystem-backed and human-debuggable.
 - Topics may be linked to sessions through `topicId` at session creation time.
 - Promoted knowledge is stored directly on the existing `TopicRecord` shape rather than in a separate opaque index.
+- `parley_list_topics` now searches promoted memory additively rather than limiting `query` to `title` and `body`.
+- Search remains lexical and filesystem-backed for Sprint 5; no semantic index or external memory service is required.
+- Workspace board digests are derived at read time from persisted topic records.
+- Operator repair guidance is derived at diagnostic-read time and is not persisted on the core session state.
+
+### `parley_list_topics`
+
+Status:
+
+- Implemented
+
+Input:
+
+- `workspaceId`
+- `status?`
+- `query?`
+- `tags?`
+
+Output:
+
+- `topics`
+
+Behavior notes:
+
+- `query`, when present, matches across `title`, `body`, `decisionSummary`, `canonicalSummary`, `openQuestions`, `actionItems`, and `tags`.
+- `tags`, when present, requires each requested tag to be present on the topic.
+- Output remains the raw topic list for compatibility; use `parley_search_topics` for match metadata.
+
+### `parley_get_topic`
+
+Status:
+
+- Implemented
+
+Input:
+
+- `workspaceId`
+- `topicId`
+
+Output:
+
+- `topic`
+- `boardCard`
+
+Behavior notes:
+
+- `boardCard` is an additive digest shape intended for future board-style clients.
+- `boardCard` includes status, tags, linked-session count, and summary-presence metadata.
+
+### `parley_search_topics`
+
+Status:
+
+- Implemented
+
+Input:
+
+- `workspaceId`
+- `status?`
+- `query?`
+- `tags?`
+- `limit`
+
+Output:
+
+- `workspaceId`
+- `results`
+
+`results` shape:
+
+```json
+{
+  "topic": {
+    "topicId": "topic-001",
+    "title": "Release rollout"
+  },
+  "matchedFields": ["decisionSummary", "actionItems"],
+  "score": 6
+}
+```
+
+Behavior notes:
+
+- Search is lexical and token-based over persisted topic fields.
+- A topic must satisfy all query tokens across the combined searchable surface to match.
+- Results are sorted by `score` and then `updatedAt`.
+
+### `parley_get_workspace_board`
+
+Status:
+
+- Implemented
+
+Input:
+
+- `workspaceId`
+- `limit`
+
+Output:
+
+- `workspaceId`
+- `topicCount`
+- `lastUpdatedAt?`
+- `statusCounts`
+- `board`
+- `openQuestions`
+- `actionItems`
+
+Behavior notes:
+
+- `board` groups topic cards by `open`, `in_progress`, and `resolved`.
+- Board cards are derived from topic records and do not require a separate board index.
+- `openQuestions` and `actionItems` are workspace-level digests intended to keep future clients from rebuilding these summaries manually.
+
+### `parley_list_diagnostics`
+
+Status:
+
+- Implemented
+
+Input:
+
+- `parleySessionId`
+- `outcome?`
+- `participant?`
+- `failureKind?`
+- `limit`
+
+Output:
+
+- `parleySessionId`
+- `diagnostics`
+
+`diagnostics` shape:
+
+```json
+{
+  "diagnosticId": "step-0001-participant_failure-1234567890",
+  "record": {
+    "outcome": "participant_failure",
+    "stateCommitStatus": "not_committed"
+  },
+  "repairGuidance": {
+    "summary": "Participant execution failed before the turn was committed.",
+    "recommendedSteps": ["Inspect the failed participant stderr, exit code, and launcher command."],
+    "canRetrySameVersion": true,
+    "shouldReadStateFirst": false
+  }
+}
+```
+
+Behavior notes:
+
+- Diagnostics remain stored under `.multi-llm/sessions/{sessionId}/diagnostics/`.
+- Filtering is additive and filesystem-backed.
+- `repairGuidance.canRetrySameVersion = false` together with `shouldReadStateFirst = true` signals the replay-boundary case where session state may already be committed.
 
 ## Open Questions
 
 - How long should compatibility string fields such as `latestSummary` and `summary` remain after downstream orchestrators adopt the structured fields?
-- Whether the first heuristic rolling summary is strong enough for future search and board ranking work without a second synthesis pass
+- Whether the current lexical Sprint 5 search surface is sufficient before a stronger second-pass synthesis or optional index layer becomes necessary

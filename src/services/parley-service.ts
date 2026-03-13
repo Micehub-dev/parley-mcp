@@ -12,9 +12,14 @@ import type {
   ParticipantKind,
   ParticipantResponse,
   RollingSummary,
+  SessionDiagnosticParticipant,
+  SessionDiagnosticRecord,
   SessionConclusion,
+  TopicBoardCard,
   TopicRecord,
-  TranscriptEntry
+  TopicSearchResult,
+  TranscriptEntry,
+  WorkspaceBoard
 } from "../types.js";
 import { createId } from "../utils/id.js";
 
@@ -50,17 +55,30 @@ export interface PromoteSummaryInput {
   topicId?: string;
 }
 
-interface StepParticipantDiagnostic {
-  participant: ParticipantKind;
-  model: string;
-  status: "ok" | "failed" | "invalid_output";
-  raw: ParticipantRawExecution;
-  resumeId?: string;
-  response?: ParticipantResponse;
-  failureKind?: "process_error" | "invalid_output";
-  message?: string;
-  retryable?: boolean;
+export interface SearchTopicsInput {
+  workspaceId: string;
+  status?: TopicRecord["status"];
+  query?: string;
+  tags?: string[];
+  limit?: number;
 }
+
+export interface GetWorkspaceBoardInput {
+  workspaceId: string;
+  limit?: number;
+}
+
+export interface ListDiagnosticsInput {
+  parleySessionId: string;
+  outcome?: SessionDiagnosticRecord["outcome"];
+  participant?: ParticipantKind;
+  failureKind?: SessionDiagnosticParticipant["failureKind"];
+  limit?: number;
+}
+
+type StepParticipantDiagnostic = SessionDiagnosticParticipant & {
+  raw: ParticipantRawExecution;
+};
 
 export class ParleyService {
   constructor(
@@ -581,6 +599,140 @@ export class ParleyService {
     };
   }
 
+  async searchTopics(input: SearchTopicsInput): Promise<{
+    workspaceId: string;
+    results: TopicSearchResult[];
+  }> {
+    const topics = await this.store.listTopics(input.workspaceId);
+    const normalizedTags = this.normalizeTags(input.tags);
+    const queryTokens = this.tokenizeSearchQuery(input.query);
+    const limit = input.limit ?? 20;
+
+    const results = topics
+      .filter((topic) => (input.status ? topic.status === input.status : true))
+      .filter((topic) => this.topicMatchesTags(topic, normalizedTags))
+      .map((topic) => {
+        const matchedFields = this.getMatchedTopicFields(topic, queryTokens);
+        return {
+          topic,
+          matchedFields,
+          score: this.scoreTopicMatch(matchedFields)
+        };
+      })
+      .filter((result) => queryTokens.length === 0 || result.matchedFields.length > 0)
+      .sort((left, right) => {
+        if (right.score !== left.score) {
+          return right.score - left.score;
+        }
+
+        return right.topic.updatedAt.localeCompare(left.topic.updatedAt);
+      })
+      .slice(0, limit);
+
+    return {
+      workspaceId: input.workspaceId,
+      results
+    };
+  }
+
+  async getWorkspaceBoard(input: GetWorkspaceBoardInput): Promise<WorkspaceBoard> {
+    const topics = await this.store.listTopics(input.workspaceId);
+    const limit = input.limit ?? 10;
+    const board = {
+      open: [] as TopicBoardCard[],
+      in_progress: [] as TopicBoardCard[],
+      resolved: [] as TopicBoardCard[]
+    };
+    const openQuestions: WorkspaceBoard["openQuestions"] = [];
+    const actionItems: WorkspaceBoard["actionItems"] = [];
+
+    for (const topic of topics) {
+      const card = this.toTopicBoardCard(topic);
+      if (board[topic.status].length < limit) {
+        board[topic.status].push(card);
+      }
+
+      for (const question of topic.openQuestions) {
+        if (openQuestions.length >= limit) {
+          break;
+        }
+
+        openQuestions.push({
+          topicId: topic.topicId,
+          title: topic.title,
+          question
+        });
+      }
+
+      for (const actionItem of topic.actionItems) {
+        if (actionItems.length >= limit) {
+          break;
+        }
+
+        actionItems.push({
+          topicId: topic.topicId,
+          title: topic.title,
+          actionItem
+        });
+      }
+    }
+
+    return {
+      workspaceId: input.workspaceId,
+      topicCount: topics.length,
+      ...(topics[0] ? { lastUpdatedAt: topics[0].updatedAt } : {}),
+      statusCounts: {
+        open: topics.filter((topic) => topic.status === "open").length,
+        in_progress: topics.filter((topic) => topic.status === "in_progress").length,
+        resolved: topics.filter((topic) => topic.status === "resolved").length
+      },
+      board,
+      openQuestions,
+      actionItems
+    };
+  }
+
+  async listDiagnostics(input: ListDiagnosticsInput): Promise<{
+    parleySessionId: string;
+    diagnostics: Array<{
+      diagnosticId: string;
+      record: SessionDiagnosticRecord;
+      repairGuidance: {
+        summary: string;
+        recommendedSteps: string[];
+        canRetrySameVersion: boolean;
+        shouldReadStateFirst: boolean;
+      };
+    }>;
+  }> {
+    await this.getSessionState(input.parleySessionId);
+
+    const diagnostics = await this.store.listSessionDiagnostics(input.parleySessionId);
+    const filtered = diagnostics
+      .filter(({ record }) => (input.outcome ? record.outcome === input.outcome : true))
+      .filter(({ record }) =>
+        input.participant
+          ? record.participants.some((participant) => participant.participant === input.participant)
+          : true
+      )
+      .filter(({ record }) =>
+        input.failureKind
+          ? record.participants.some((participant) => participant.failureKind === input.failureKind)
+          : true
+      )
+      .slice(0, input.limit ?? 20)
+      .map(({ diagnosticId, record }) => ({
+        diagnosticId,
+        record,
+        repairGuidance: this.buildRepairGuidance(record)
+      }));
+
+    return {
+      parleySessionId: input.parleySessionId,
+      diagnostics: filtered
+    };
+  }
+
   private buildFinishResponse(state: ParleySessionState) {
     const conclusion = this.buildConclusion(state);
 
@@ -831,6 +983,141 @@ export class ParleyService {
     return (
       left.length === right.length && left.every((value, index) => value === right[index])
     );
+  }
+
+  private normalizeTags(tags?: string[]) {
+    if (!tags || tags.length === 0) {
+      return [];
+    }
+
+    return [...new Set(tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
+  }
+
+  private tokenizeSearchQuery(query?: string) {
+    if (!query) {
+      return [];
+    }
+
+    return [...new Set(query.toLowerCase().split(/\s+/u).map((token) => token.trim()).filter(Boolean))];
+  }
+
+  private topicMatchesTags(topic: TopicRecord, tags: string[]) {
+    if (tags.length === 0) {
+      return true;
+    }
+
+    const topicTags = new Set(topic.tags.map((tag) => tag.trim().toLowerCase()).filter(Boolean));
+    return tags.every((tag) => topicTags.has(tag));
+  }
+
+  private getMatchedTopicFields(topic: TopicRecord, queryTokens: string[]) {
+    if (queryTokens.length === 0) {
+      return [];
+    }
+
+    const fields = [
+      { name: "title", values: [topic.title] },
+      { name: "body", values: [topic.body] },
+      { name: "decisionSummary", values: [topic.decisionSummary ?? ""] },
+      { name: "canonicalSummary", values: [topic.canonicalSummary ?? ""] },
+      { name: "openQuestions", values: topic.openQuestions },
+      { name: "actionItems", values: topic.actionItems },
+      { name: "tags", values: topic.tags }
+    ];
+
+    const matchedFields = fields
+      .filter((field) =>
+        field.values.some((value) => {
+          const normalizedValue = value.toLowerCase();
+          return queryTokens.some((token) => normalizedValue.includes(token));
+        })
+      )
+      .map((field) => field.name);
+
+    const combinedValues = fields.flatMap((field) => field.values).join("\n").toLowerCase();
+    return queryTokens.every((token) => combinedValues.includes(token)) ? matchedFields : [];
+  }
+
+  private scoreTopicMatch(matchedFields: string[]) {
+    const weights: Record<string, number> = {
+      title: 5,
+      decisionSummary: 4,
+      canonicalSummary: 4,
+      body: 3,
+      openQuestions: 2,
+      actionItems: 2,
+      tags: 1
+    };
+
+    return matchedFields.reduce((total, field) => total + (weights[field] ?? 0), 0);
+  }
+
+  private toTopicBoardCard(topic: TopicRecord): TopicBoardCard {
+    return {
+      topicId: topic.topicId,
+      title: topic.title,
+      status: topic.status,
+      tags: [...topic.tags],
+      updatedAt: topic.updatedAt,
+      linkedSessionCount: topic.linkedSessionIds.length,
+      openQuestionCount: topic.openQuestions.length,
+      actionItemCount: topic.actionItems.length,
+      hasDecisionSummary: Boolean(topic.decisionSummary),
+      ...(topic.decisionSummary ? { decisionSummary: topic.decisionSummary } : {}),
+      ...(topic.canonicalSummary ? { canonicalSummary: topic.canonicalSummary } : {})
+    };
+  }
+
+  private buildRepairGuidance(record: SessionDiagnosticRecord) {
+    if (record.outcome === "participant_failure") {
+      const failedParticipants = record.participants.filter((participant) => participant.status !== "ok");
+      const hasProcessFailure = failedParticipants.some(
+        (participant) => participant.failureKind === "process_error"
+      );
+
+      return {
+        summary: hasProcessFailure
+          ? "Participant execution failed before the turn was committed."
+          : "Participant output was rejected before the turn was committed.",
+        recommendedSteps: hasProcessFailure
+          ? [
+              "Inspect the failed participant stderr, exit code, and launcher command.",
+              "Fix the participant runtime or configuration issue before retrying parley_step.",
+              "Retry with the same expectedStateVersion after confirming the session state was not committed."
+            ]
+          : [
+              "Inspect the invalid participant payload and validation failure details.",
+              "Adjust the participant prompt or adapter parsing so the shared response schema is satisfied.",
+              "Retry with the same expectedStateVersion only after the output issue is fixed."
+            ],
+        canRetrySameVersion: record.stateCommitStatus === "not_committed",
+        shouldReadStateFirst: false
+      };
+    }
+
+    if (record.stateCommitStatus === "session_state_committed") {
+      return {
+        summary: "Session state was committed before transcript persistence failed.",
+        recommendedSteps: [
+          "Call parley_state before retrying so the orchestrator sees the committed turn.",
+          "Avoid replaying the same step blindly because participant outputs may already be persisted in state.",
+          "Repair transcript storage only after confirming the current session version."
+        ],
+        canRetrySameVersion: false,
+        shouldReadStateFirst: true
+      };
+    }
+
+    return {
+      summary: "Storage failed before the turn was committed.",
+      recommendedSteps: [
+        "Check filesystem availability or permissions for the session directory.",
+        "Confirm that diagnostics captured the failed attempt details.",
+        "Retry parley_step with the same expectedStateVersion after the storage issue is resolved."
+      ],
+      canRetrySameVersion: true,
+      shouldReadStateFirst: false
+    };
   }
 
   private markAuditCompleted(auditLog: OrchestratorAuditLogEntry[], completedAt: string) {
