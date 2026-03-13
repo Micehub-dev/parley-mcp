@@ -266,20 +266,20 @@ Memory-layer review note:
 
 - External long-term memory layers such as mem0 and Milvus were discussed, but are intentionally deferred until file-backed retrieval and operator workflows prove insufficient for Sprint 5 needs.
 
-### Sprint 6: Packaging and External Surfaces
+### Sprint 6: Verification and Synthesis Hardening
 
 Window: 2026-06-01 to 2026-06-12
 
 Goal:
 
-- plan external distribution surfaces on top of the stable MCP core
+- reduce remaining orchestrator ambiguity, improve promoted-memory quality, and add the smallest repair helpers that materially unblock operators
 
 Planned scope:
 
-- Gemini extension direction
-- Claude plugin direction
-- UI entry strategy
-- release candidate preparation
+- broader orchestrator matrix coverage
+- synthesis-quality refinement on top of `rollingSummary`, `conclusion`, and promoted topic memory
+- minimal repair-oriented helper tooling where `parley_list_diagnostics` is still insufficient
+- packaging direction only if the above stability work lands cleanly
 
 ## 7. Epic View
 
@@ -411,11 +411,11 @@ Mitigation:
 
 - align planning docs with the implemented Sprint 5 retrieval and operator state
 - review remaining orchestrator coverage gaps after the new `claude` and `gemini`-labeled stdio scenarios
-- identify whether Sprint 6 should prioritize synthesis refinement or packaging preparation first
+- freeze Sprint 6 around verification expansion, synthesis refinement, and minimal repair helpers before any packaging work
 
 ### Next Implementation Priority
 
 1. Broaden orchestrator verification coverage beyond the current Windows-first stdio matrix.
 2. Revisit heuristic synthesis quality now that retrieval and board surfaces exist.
 3. Add minimal repair helpers only where diagnostic inspection still leaves operators blocked.
-4. Plan packaging direction on top of the stable Sprint 5 MCP surface.
+4. Revisit packaging direction only after the Sprint 6 hardening work is stable.
