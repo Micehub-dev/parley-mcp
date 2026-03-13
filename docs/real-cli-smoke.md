@@ -31,8 +31,10 @@ $env:PARLEY_SMOKE_KEEP_TEMP="1"
 
 ## Expected Result
 
-- Success path: the script prints `ok: true`, the one-turn parley responses, and the finish-time `conclusion`.
+- Success path: the script prints `ok: true`, `recordedAt`, environment metadata, participant launcher details, Gemini usefulness classification, the one-turn parley responses, and the finish-time `conclusion`.
 - Failure path: the script prints `ok: false`, the temporary `smokeRoot`, and the diagnostics directory so operators can inspect the persisted artifacts.
+
+The success payload is intended to be copied directly into the current release-evidence note based on `docs/release-evidence-template.md`.
 
 ## Guardrail Overrides
 
@@ -48,8 +50,8 @@ Observed on 2026-03-13 in a Windows local environment:
 
 - `claude.exe` resolved directly from `PATH`
 - PowerShell surfaced `gemini.ps1`, but Parley resolved Gemini through the npm-installed `gemini.cmd` shim under `%APPDATA%\\npm`
-- `npm run smoke:real` completed successfully with `ok: true`, one committed turn, and a finish-time `conclusion`
-- Gemini still may return weaker or less structured content than Claude, but the adapter now normalizes common fenced JSON, labeled plain-text, and partial JSON responses into the shared participant contract when safe
+- `npm run smoke:real` completed successfully with `ok: true`, one committed turn, a finish-time `conclusion`, launcher metadata, and a `geminiUsefulness` field
+- the latest default release-oriented smoke topic produced a materially useful Gemini response after prompt hardening, even though the response still fell back to the default next-step string and omitted argument/question arrays
 
 Linux note:
 

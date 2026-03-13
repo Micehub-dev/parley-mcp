@@ -8,6 +8,7 @@
 - Real-environment confidence today: Windows local smoke via `npm run smoke:real` plus a Windows Codex Desktop acceptance pass
 - Linux is currently backed by automated CI evidence rather than a Linux real-CLI smoke
 - macOS remains unverified in this repository
+- Sprint 10 focus: add exercised real-environment evidence only when available, keep support wording narrow otherwise, and improve Gemini usefulness in real smoke without widening the contract
 
 ## Automated Coverage
 
@@ -35,7 +36,7 @@
 
 | Verification Type | Participants | OS | Transport | Workflow | Latest Result |
 | --- | --- | --- | --- | --- | --- |
-| manual smoke | Claude + Gemini CLIs | Windows | stdio / in-process service | `npm run smoke:real` | Passed on 2026-03-13 using `claude.exe` plus the npm-installed `gemini.cmd` shim; see `docs/real-cli-smoke.md` |
+| manual smoke | Claude + Gemini CLIs | Windows | stdio / in-process service | `npm run smoke:real` | Passed on 2026-03-13 using `claude.exe` plus the npm-installed `gemini.cmd` shim; the latest default release-oriented prompt classified Gemini as materially useful and emitted launcher plus usefulness metadata for release evidence; see `docs/real-cli-smoke.md` |
 | manual acceptance | Codex Desktop + Claude + Gemini CLIs | Windows | stdio MCP | register server -> discover tools -> start -> claim_lease -> step -> diagnostics -> finish | Passed on 2026-03-13; see `docs/codex-desktop-acceptance.md` |
 
 ## Notes
@@ -45,3 +46,4 @@
 - Windows operators should prefer the npm-installed `gemini.cmd` shim when it is available; use launcher overrides only when `gemini.ps1` is the only working entrypoint.
 - Linux evidence in Sprint 9 comes from exercised `ubuntu-latest` CI; local WSL on the current workstation was not promoted into release evidence because Node.js was not available there.
 - macOS should remain a design target until an actual macOS environment is exercised; checklist preparation alone does not change the support statement.
+- Sprint 10 now keeps Gemini usefulness explicit in smoke output so contract validity and operator usefulness remain reviewable as separate release bars.

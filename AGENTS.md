@@ -4,7 +4,7 @@
 
 Parley is an orchestrator-agnostic MCP server for running and managing multi-LLM parley sessions across Codex, Claude, and Gemini.
 
-The current codebase is at the cross-environment verification and acceptance hardening stage:
+The current codebase is at the Windows-first production-readiness hardening stage, with Sprint 10 focused on stronger production-use evidence, Gemini usefulness, and release operationalization:
 
 - Node.js + TypeScript
 - MCP server over stdio
@@ -38,7 +38,7 @@ Read these files first before making changes:
 2. `multi-cli-parley-architecture.md`
 3. `docs/project-operating-plan.md`
 4. `docs/mcp-contract-spec.md`
-5. `docs/sprints/2026-sprint-9.md`
+5. `docs/sprints/2026-sprint-10.md`
 
 If code and docs disagree, prefer:
 
@@ -100,11 +100,12 @@ npm run dev
 
 Priority order for upcoming work:
 
-1. keep subprocess guardrails, corruption visibility, diagnostics redaction, and Gemini normalization stable in CI
-2. keep Linux automation evidence, Windows real smoke evidence, and Codex Desktop acceptance docs aligned with runtime reality
-3. keep release runbook ownership and support-boundary docs honest about macOS being unverified
-4. packaging direction only after Sprint 9 verification and acceptance hardening remains stable
-5. UI or extension work only as thin wrappers over the stable MCP core
+1. expand real-environment verification only when an actual additional environment is exercised, and keep support-boundary wording narrow otherwise
+2. improve Gemini operator usefulness in real smoke without widening the shared participant contract
+3. make release evidence collection repeatable across smoke, acceptance, matrix, and runbook docs
+4. keep subprocess guardrails, corruption visibility, diagnostics redaction, and Gemini normalization stable in CI while Sprint 10 work lands
+5. packaging direction only after Sprint 10 production-use evidence and release operationalization remain stable
+6. UI or extension work only as thin wrappers over the stable MCP core
 
 Do not jump ahead to UI or packaging unless the current sprint says so.
 
@@ -150,5 +151,9 @@ Escalate before changing:
 - Gemini normalization now recovers common fenced JSON, labeled plain-text, and partial JSON output shapes when they can be mapped safely into the shared response contract.
 - filesystem reads now distinguish missing artifacts from invalid or unreadable ones, and JSON-backed artifacts write through atomic temp-file replacement.
 - `npm run smoke:real` is the current release-oriented real-CLI check; Windows Gemini wrapper installs may require explicit launcher overrides.
+- `npm run smoke:real` now emits launcher metadata and a `geminiUsefulness` assessment so release evidence can be copied into one review note without manual reconstruction.
+- the current Windows smoke path is green, and the latest release-oriented default prompt produced a materially useful Gemini response on 2026-03-13 while keeping the shared contract unchanged.
 - `docs/codex-desktop-acceptance.md` is the current repeatable operator checklist for Codex Desktop registration and baseline tool-flow verification.
+- `docs/release-evidence-template.md` is the current default note shape for keeping smoke, acceptance, support-boundary, and usefulness evidence aligned.
+- release readiness now depends on keeping support-boundary wording, smoke evidence, Codex Desktop acceptance evidence, and release docs aligned as one reviewable set.
 - Packaging for Claude plugins, Gemini extensions, and UI surfaces is explicitly later-phase work.

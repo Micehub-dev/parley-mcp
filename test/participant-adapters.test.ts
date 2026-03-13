@@ -4,7 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createParticipantAdapters } from "../src/participants/adapters.js";
+import {
+  assessParticipantResponseUsefulness,
+  buildParticipantPrompt,
+  createParticipantAdapters
+} from "../src/participants/adapters.js";
 import type { CommandExecutionInput, CommandExecutor } from "../src/participants/runtime.js";
 import type { ParticipantAdapterInput } from "../src/participants/types.js";
 import type { ParleySessionState } from "../src/types.js";
@@ -144,6 +148,28 @@ test("gemini adapter drops leading meta-planning lines from plain-text summaries
   }
 });
 
+test("gemini adapter drops generic lead-in lines when a useful summary follows", async () => {
+  const executor = new FakeCommandExecutor({
+    stdout: JSON.stringify({
+      response: [
+        "Here is a structured response.",
+        "Sprint 10 should keep the Windows-first support boundary narrow until Linux real smoke exists."
+      ].join("\n")
+    })
+  });
+  const adapters = createParticipantAdapters(executor);
+
+  const result = await adapters.gemini.run(buildAdapterInput());
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(
+      result.output.summary,
+      "Sprint 10 should keep the Windows-first support boundary narrow until Linux real smoke exists."
+    );
+  }
+});
+
 test("gemini adapter coerces non-enum stance values from JSON payloads", async () => {
   const executor = new FakeCommandExecutor({
     stdout: JSON.stringify({
@@ -259,6 +285,53 @@ test("gemini adapter extracts labeled plain-text sections into the shared partic
       "Document the macOS checklist and retain the narrow support boundary."
     );
   }
+});
+
+test("participant prompt includes the Sprint 10 usefulness bar", () => {
+  const prompt = buildParticipantPrompt("gemini", buildAdapterInput());
+
+  assert.match(prompt, /Make the summary topic-specific/i);
+  assert.match(prompt, /ask one concrete topic question/i);
+  assert.match(prompt, /Avoid generic filler/i);
+  assert.match(prompt, /Do not ask for the objective/i);
+  assert.match(prompt, /Do not say you are ready to participate/i);
+});
+
+test("usefulness assessment flags generic fallback Gemini responses", () => {
+  const assessment = assessParticipantResponseUsefulness(
+    {
+      stance: "undecided",
+      summary: "I am ready to participate in the Parley multi-LLM session.",
+      arguments: [],
+      questions: [],
+      proposed_next_step: "Continue the parley with the next participant response."
+    },
+    "Return one short structured thought about Parley production-readiness hardening."
+  );
+
+  assert.equal(assessment.classification, "generic_fallback");
+  assert.deepEqual(assessment.reasons, [
+    "generic_summary",
+    "default_next_step",
+    "missing_topic_terms",
+    "no_supporting_detail"
+  ]);
+});
+
+test("usefulness assessment keeps topic-specific Gemini responses material", () => {
+  const assessment = assessParticipantResponseUsefulness(
+    {
+      stance: "refine",
+      summary: "Keep the Windows-first release note until a Linux real smoke run is exercised.",
+      arguments: ["Ubuntu CI is useful evidence but it is not the same as a Linux real-CLI pass."],
+      questions: ["Who will own the first Linux participant smoke run?"],
+      proposed_next_step: "Record the current support boundary in the release evidence note."
+    },
+    "Strengthen Linux and Windows release evidence without overstating support."
+  );
+
+  assert.equal(assessment.classification, "material");
+  assert.ok(assessment.reasons.includes("missing_topic_terms") === false);
 });
 
 test("adapter normalizes launcher override parse errors into process_error results", async () => {
