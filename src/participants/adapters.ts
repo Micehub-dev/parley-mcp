@@ -46,13 +46,15 @@ abstract class BaseParticipantAdapter implements ParticipantAdapter {
       };
     }
 
-    if (raw.exitCode !== 0) {
+    if (raw.guardrail || raw.exitCode !== 0) {
+      const guardrail = raw.guardrail;
       return {
         ok: false,
         participant: this.kind,
         reason: "process_error",
-        message: `Participant process exited with code ${raw.exitCode ?? "unknown"}.`,
-        raw
+        message: buildProcessFailureMessage(raw),
+        raw,
+        ...(guardrail ? { guardrail } : {})
       };
     }
 
@@ -85,6 +87,18 @@ abstract class BaseParticipantAdapter implements ParticipantAdapter {
     output: ParticipantResponse;
     resumeId?: string;
   };
+}
+
+function buildProcessFailureMessage(raw: ParticipantRawExecution): string {
+  if (raw.guardrail === "timeout") {
+    return "Participant process timed out before producing a complete response.";
+  }
+
+  if (raw.guardrail === "output_limit") {
+    return "Participant process exceeded the configured output limit before completion.";
+  }
+
+  return `Participant process exited with code ${raw.exitCode ?? "unknown"}.`;
 }
 
 class ClaudeParticipantAdapter extends BaseParticipantAdapter {

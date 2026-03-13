@@ -7,7 +7,7 @@ import { z } from "zod";
 import { loadConfig } from "./config.js";
 import { ParleyError, isParleyError } from "./errors.js";
 import { createParticipantAdapters } from "./participants/adapters.js";
-import { FileSystemStore } from "./storage/fs-store.js";
+import { FileSystemStore, isFileSystemStoreError } from "./storage/fs-store.js";
 import { ParleyService } from "./services/parley-service.js";
 import type { TopicRecord } from "./types.js";
 import { createId } from "./utils/id.js";
@@ -455,8 +455,16 @@ async function executeTool(
   try {
     return await operation();
   } catch (error) {
-    if (!isParleyError(error)) {
-      throw error;
+    const normalizedError = isFileSystemStoreError(error)
+      ? new ParleyError("storage_failure", error.message, {
+        artifactType: error.artifactType,
+        artifactPath: error.artifactPath,
+        failureKind: error.code
+      })
+      : error;
+
+    if (!isParleyError(normalizedError)) {
+      throw normalizedError;
     }
 
     return {
@@ -467,9 +475,9 @@ async function executeTool(
           text: JSON.stringify(
             {
               error: {
-                code: error.code,
-                message: error.message,
-                ...(error.details ? { details: error.details } : {})
+                code: normalizedError.code,
+                message: normalizedError.message,
+                ...(normalizedError.details ? { details: normalizedError.details } : {})
               }
             },
             null,

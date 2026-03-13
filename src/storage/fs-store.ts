@@ -1,5 +1,6 @@
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 import type {
   ParleySessionState,
@@ -24,7 +25,7 @@ export class FileSystemStore {
 
   async listWorkspaces(): Promise<WorkspaceRecord[]> {
     const workspacesDir = path.join(this.dataRoot, "workspaces");
-    const entries = await readdir(workspacesDir, { withFileTypes: true });
+    const entries = await safeReadDir(workspacesDir, "workspace");
     return entries
       .filter((entry) => entry.isDirectory())
       .map((entry) => ({
@@ -44,13 +45,13 @@ export class FileSystemStore {
 
     await mkdir(topicDir, { recursive: true });
     await writeJson(path.join(topicDir, "topic.json"), record);
-    await writeFile(path.join(topicDir, "threads.jsonl"), "", "utf8");
-    await writeFile(path.join(topicDir, "decision.md"), "", "utf8");
+    await writeTextAtomically(path.join(topicDir, "threads.jsonl"), "");
+    await writeTextAtomically(path.join(topicDir, "decision.md"), "");
   }
 
   async listTopics(workspaceId: string): Promise<TopicRecord[]> {
     const topicsDir = path.join(this.dataRoot, "workspaces", workspaceId, "topics");
-    const entries = await safeReadDir(topicsDir);
+    const entries = await safeReadDir(topicsDir, "topic");
     const topics: TopicRecord[] = [];
 
     for (const entry of entries) {
@@ -59,7 +60,7 @@ export class FileSystemStore {
       }
 
       const topicPath = path.join(topicsDir, entry.name, "topic.json");
-      const record = await readJson<TopicRecord>(topicPath);
+      const record = await readJson<TopicRecord>(topicPath, "topic");
       if (record) {
         topics.push(record);
       }
@@ -70,7 +71,8 @@ export class FileSystemStore {
 
   async getTopic(workspaceId: string, topicId: string): Promise<TopicRecord | null> {
     return readJson<TopicRecord>(
-      path.join(this.dataRoot, "workspaces", workspaceId, "topics", topicId, "topic.json")
+      path.join(this.dataRoot, "workspaces", workspaceId, "topics", topicId, "topic.json"),
+      "topic"
     );
   }
 
@@ -78,9 +80,9 @@ export class FileSystemStore {
     const sessionDir = path.join(this.dataRoot, "sessions", state.sessionId);
     await mkdir(sessionDir, { recursive: true });
     await writeJson(path.join(sessionDir, "state.json"), state);
-    await writeFile(path.join(sessionDir, "transcript.jsonl"), "", "utf8");
+    await writeTextAtomically(path.join(sessionDir, "transcript.jsonl"), "");
     await appendTranscript(state.sessionId, initialTranscript, this.dataRoot);
-    await writeFile(path.join(sessionDir, "summary.md"), "", "utf8");
+    await writeTextAtomically(path.join(sessionDir, "summary.md"), "");
     await writeJson(path.join(sessionDir, "lease.json"), {
       leaseOwner: state.leaseOwner ?? null,
       leaseExpiresAt: state.leaseExpiresAt ?? null
@@ -89,7 +91,8 @@ export class FileSystemStore {
 
   async getSession(sessionId: string): Promise<ParleySessionState | null> {
     return readJson<ParleySessionState>(
-      path.join(this.dataRoot, "sessions", sessionId, "state.json")
+      path.join(this.dataRoot, "sessions", sessionId, "state.json"),
+      "session_state"
     );
   }
 
@@ -122,7 +125,7 @@ export class FileSystemStore {
     sessionId: string
   ): Promise<Array<{ diagnosticId: string; record: SessionDiagnosticRecord }>> {
     const diagnosticsDir = path.join(this.dataRoot, "sessions", sessionId, "diagnostics");
-    const entries = await safeReadDir(diagnosticsDir);
+    const entries = await safeReadDir(diagnosticsDir, "diagnostic");
     const diagnostics: Array<{ diagnosticId: string; record: SessionDiagnosticRecord }> = [];
 
     for (const entry of entries) {
@@ -131,7 +134,8 @@ export class FileSystemStore {
       }
 
       const record = await readJson<SessionDiagnosticRecord>(
-        path.join(diagnosticsDir, entry.name)
+        path.join(diagnosticsDir, entry.name),
+        "diagnostic"
       );
       if (!record) {
         continue;
@@ -153,7 +157,8 @@ export class FileSystemStore {
     diagnosticId: string
   ): Promise<SessionDiagnosticRecord | null> {
     return readJson<SessionDiagnosticRecord>(
-      path.join(this.dataRoot, "sessions", sessionId, "diagnostics", `${diagnosticId}.json`)
+      path.join(this.dataRoot, "sessions", sessionId, "diagnostics", `${diagnosticId}.json`),
+      "diagnostic"
     );
   }
 
@@ -179,18 +184,60 @@ export class FileSystemStore {
   }
 }
 
-async function readJson<T>(filePath: string): Promise<T | null> {
+export type FileSystemStoreErrorCode =
+  | "artifact_invalid"
+  | "artifact_unreadable"
+  | "directory_unreadable";
+
+export class FileSystemStoreError extends Error {
+  constructor(
+    public readonly code: FileSystemStoreErrorCode,
+    public readonly artifactPath: string,
+    public readonly artifactType: string,
+    message: string
+  ) {
+    super(message);
+    this.name = "FileSystemStoreError";
+  }
+}
+
+export function isFileSystemStoreError(error: unknown): error is FileSystemStoreError {
+  return error instanceof FileSystemStoreError;
+}
+
+async function readJson<T>(filePath: string, artifactType = "artifact"): Promise<T | null> {
   try {
     const raw = await readFile(filePath, "utf8");
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      throw new FileSystemStoreError(
+        "artifact_invalid",
+        filePath,
+        artifactType,
+        `Invalid JSON payload in ${artifactType} artifact at ${filePath}.`
+      );
+    }
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return null;
+    }
+
+    if (isFileSystemStoreError(error)) {
+      throw error;
+    }
+
+    throw new FileSystemStoreError(
+      "artifact_unreadable",
+      filePath,
+      artifactType,
+      `Unable to read ${artifactType} artifact at ${filePath}.`
+    );
   }
 }
 
 async function writeJson(filePath: string, value: unknown): Promise<void> {
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  await writeTextAtomically(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 async function appendTranscript(
@@ -202,13 +249,44 @@ async function appendTranscript(
   const lines = entries.map((entry) => JSON.stringify(entry)).join("\n");
   const nextContent = lines.length > 0 ? `${lines}\n` : "";
   await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, nextContent, { encoding: "utf8", flag: "a" });
+  await appendFile(filePath, nextContent, "utf8");
 }
 
-async function safeReadDir(dirPath: string) {
+async function safeReadDir(dirPath: string, artifactType = "directory") {
   try {
     return await readdir(dirPath, { withFileTypes: true });
-  } catch {
-    return [];
+  } catch (error) {
+    if (isMissingFileError(error)) {
+      return [];
+    }
+
+    throw new FileSystemStoreError(
+      "directory_unreadable",
+      dirPath,
+      artifactType,
+      `Unable to read ${artifactType} directory at ${dirPath}.`
+    );
   }
+}
+
+async function writeTextAtomically(filePath: string, content: string): Promise<void> {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
+
+  try {
+    await writeFile(tempPath, content, "utf8");
+    await rename(tempPath, filePath);
+  } catch (error) {
+    await rm(tempPath, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
+function isMissingFileError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
 }

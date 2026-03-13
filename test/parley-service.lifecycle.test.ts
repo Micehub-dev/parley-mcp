@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -119,6 +119,41 @@ test("session transcript is created with the initial system message", async () =
     const transcript = await readFile(transcriptPath, "utf8");
 
     assert.match(transcript, /Parley session created for topic: Transcript bootstrap/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("getSessionState distinguishes corrupted session artifacts from missing sessions", async () => {
+  const fixture = await createFixture();
+
+  try {
+    const result = await fixture.service.startSession({
+      workspaceId: "default",
+      workspaceRoot: fixture.rootDir,
+      topic: "Corrupted session state",
+      orchestrator: "codex"
+    });
+
+    const statePath = path.join(
+      fixture.rootDir,
+      ".multi-llm",
+      "sessions",
+      result.parleySessionId,
+      "state.json"
+    );
+    await writeFile(statePath, "{not-valid-json", "utf8");
+
+    await assert.rejects(
+      () => fixture.service.getSessionState(result.parleySessionId),
+      (error: unknown) => {
+        assert.ok(error instanceof ParleyError);
+        assert.equal(error.code, "storage_failure");
+        assert.equal(error.details?.failureKind, "artifact_invalid");
+        assert.equal(error.details?.artifactType, "session_state");
+        return true;
+      }
+    );
   } finally {
     await fixture.cleanup();
   }
@@ -442,6 +477,67 @@ test("advanceStep propagates participant process failures without partial commit
     assert.equal(diagnostic.participants[0]?.raw.exitCode, 17);
     assert.equal(diagnostic.participants[0]?.failureKind, "process_error");
     assert.equal(diagnosticFiles.length, 1);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("advanceStep surfaces timeout guardrails through participant_failure details and diagnostics", async () => {
+  const fixture = await createFixture(
+    createMockAdapters({
+      claude: async () =>
+        failureResult("claude", "process_error", "Claude timed out before finishing.", {
+          exitCode: null,
+          signal: "SIGTERM",
+          durationMs: 250,
+          timedOut: true,
+          guardrail: "timeout"
+        }),
+      gemini: async () => successResult("gemini", buildResponse("refine", "Gemini would succeed."))
+    }).adapters
+  );
+
+  try {
+    const result = await fixture.service.startSession({
+      workspaceId: "default",
+      workspaceRoot: fixture.rootDir,
+      topic: "Timeout guardrail",
+      orchestrator: "codex",
+      orchestratorRunId: "run-041"
+    });
+
+    const lease = await fixture.service.claimLease({
+      parleySessionId: result.parleySessionId,
+      orchestratorRunId: "run-041",
+      ttlSeconds: 300
+    });
+
+    await assert.rejects(
+      () =>
+        fixture.service.advanceStep({
+          parleySessionId: result.parleySessionId,
+          expectedStateVersion: lease.stateVersion,
+          orchestratorRunId: "run-041"
+        }),
+      (error: unknown) => {
+        assert.ok(error instanceof ParleyError);
+        assert.equal(error.code, "participant_failure");
+        assert.equal(error.details?.guardrail, "timeout");
+        assert.equal(error.details?.timedOut, true);
+        assert.equal(error.details?.signal, "SIGTERM");
+        return true;
+      }
+    );
+
+    const diagnostics = await fixture.service.listDiagnostics({
+      parleySessionId: result.parleySessionId,
+      failureKind: "process_error",
+      detailLevel: "full"
+    });
+
+    assert.equal(diagnostics.diagnostics[0]?.record.participants[0]?.raw.guardrail, "timeout");
+    assert.equal(diagnostics.diagnostics[0]?.record.participants[0]?.raw.timedOut, true);
+    assert.match(diagnostics.diagnostics[0]?.repairGuidance.summary ?? "", /timed out/i);
   } finally {
     await fixture.cleanup();
   }
@@ -1266,7 +1362,14 @@ function failureResult(
   participant: ParticipantKind,
   reason: "invalid_output" | "process_error",
   message: string,
-  options?: { exitCode?: number }
+  options?: {
+    exitCode?: number | null;
+    signal?: string;
+    durationMs?: number;
+    timedOut?: boolean;
+    outputLimitExceeded?: boolean;
+    guardrail?: import("../src/types.js").ParticipantProcessGuardrail;
+  }
 ): ParticipantExecutionResult {
   return {
     ok: false,
@@ -1275,8 +1378,14 @@ function failureResult(
     message,
     raw: {
       ...emptyRaw(participant),
-      ...(typeof options?.exitCode === "number" ? { exitCode: options.exitCode } : {})
-    }
+      ...(options && "exitCode" in options ? { exitCode: options.exitCode ?? null } : {}),
+      ...(options?.signal ? { signal: options.signal } : {}),
+      ...(typeof options?.durationMs === "number" ? { durationMs: options.durationMs } : {}),
+      ...(options?.timedOut ? { timedOut: true } : {}),
+      ...(options?.outputLimitExceeded ? { outputLimitExceeded: true } : {}),
+      ...(options?.guardrail ? { guardrail: options.guardrail } : {})
+    },
+    ...(options?.guardrail ? { guardrail: options.guardrail } : {})
   };
 }
 

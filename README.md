@@ -38,6 +38,9 @@ Most AI tooling gets trapped inside one client surface. Parley takes the opposit
 - Operator-facing diagnostic inspection with replay and repair guidance
 - Redacted-by-default diagnostic MCP views with explicit full-detail opt-in for local debugging
 - Next-safe repair actions derived from persisted diagnostics for replay-boundary follow-up
+- Participant subprocess timeout, termination, and output-size guardrails
+- Atomic JSON persistence for session, topic, lease, and diagnostic artifacts
+- Explicit corrupted-artifact visibility on session and topic reads
 
 ## Architecture
 
@@ -56,7 +59,7 @@ flowchart LR
 
 ## Current Status
 
-The repository is currently at the **diagnostics access hardening** stage.
+The repository is currently at the **production-readiness hardening** stage.
 
 - MCP server skeleton and core session lifecycle are implemented
 - Filesystem-backed storage is implemented
@@ -69,12 +72,15 @@ The repository is currently at the **diagnostics access hardening** stage.
 - `parley_get_workspace_board` exposes board-style workspace digests for downstream clients
 - `parley_list_diagnostics` exposes failed step diagnostics with operator repair guidance and next-safe tool actions
 - `parley_list_diagnostics` now redacts raw subprocess details by default and requires explicit `detailLevel: "full"` opt-in for full MCP detail
+- participant subprocesses now enforce timeout, kill-grace, and output-size guardrails with environment-variable overrides for operators
+- filesystem reads now distinguish missing artifacts from invalid or unreadable ones instead of collapsing them into a generic null path
 - rolling summary, conclusion, and promoted topic memory now deduplicate repeated questions/action items and emit more compact synthesis text
 - stdio integration coverage now exercises participant resume reuse and lease-conflict handling across orchestrator-labeled runs
 - Structured MCP tool errors now return machine-readable JSON envelopes with `isError: true`
 - Failed participant attempts persist debug-friendly diagnostics under `.multi-llm/sessions/<sessionId>/diagnostics/`
 - Service and adapter tests cover happy-path execution, retrieval, diagnostics, and key failure modes
 - Stdio MCP integration coverage now exercises `start -> claim_lease -> step -> finish -> promote -> search -> board`, resume reuse, and lease-conflict scenarios
+- `npm run smoke:real` provides a release-oriented real CLI smoke path, with the current Windows Gemini wrapper caveat documented under `docs/real-cli-smoke.md`
 - CI is configured for install, lint, test, typecheck, and build
 
 ## Repository Layout
@@ -119,6 +125,7 @@ npm test
 npm run lint
 npm run typecheck
 npm run build
+npm run smoke:real
 ```
 
 ### Run
@@ -129,17 +136,28 @@ npm run dev
 
 Parley stores local project data under `.multi-llm/`, including workspace metadata, parley sessions, transcripts, and topic records.
 
+## Operational Notes
+
+- Default participant guardrails:
+  - `PARLEY_PARTICIPANT_TIMEOUT_MS=120000`
+  - `PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES=1000000`
+  - `PARLEY_PARTICIPANT_KILL_GRACE_MS=1000`
+- Windows operators may need to launch Gemini through a PowerShell wrapper via `PARLEY_GEMINI_COMMAND` and `PARLEY_GEMINI_ARGS_JSON`.
+- Corrupted or unreadable persisted artifacts now surface explicit `storage_failure` details instead of silently disappearing from read APIs.
+
 ## Documentation
 
 - `AGENTS.md`: onboarding guide for coding agents and contributors
 - `docs/project-operating-plan.md`: PM-oriented roadmap, sprint structure, and prioritization
 - `docs/mcp-contract-spec.md`: MCP contract source of truth
+- `docs/real-cli-smoke.md`: release-oriented real CLI smoke workflow and latest observed result
+- `docs/release-checklist.md`: release runbook for preflight, rollout, rollback, and post-release review
 - `multi-cli-parley-architecture.md`: architecture rationale and long-form design
 
 ## Roadmap
 
-- Keep packaging direction downstream of the now-stable Sprint 7 diagnostics hardening bar
-- Keep diagnostics access rules stable before diagnostics-oriented helper surfaces grow further
+- Keep packaging direction downstream of the now-stable Sprint 8 production-readiness hardening bar
+- Keep subprocess guardrails, corruption visibility, and diagnostics access rules stable before broader distribution work
 - Package thin surfaces for plugins, extensions, and future UI layers only after those safeguards stay stable
 
 ## Use Cases

@@ -2,6 +2,8 @@ export type ParticipantKind = "claude" | "gemini";
 
 export type ParticipantStance = "agree" | "disagree" | "refine" | "undecided";
 
+export type ParticipantProcessGuardrail = "timeout" | "output_limit";
+
 export interface ParleyConfig {
   parley: {
     defaults: {
@@ -35,6 +37,19 @@ export interface ParticipantResponse {
   arguments: string[];
   questions: string[];
   proposed_next_step: string;
+}
+
+export interface ParticipantRawExecution {
+  command: string;
+  args: string[];
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  signal?: string;
+  durationMs?: number;
+  timedOut?: boolean;
+  outputLimitExceeded?: boolean;
+  guardrail?: ParticipantProcessGuardrail;
 }
 
 export interface RollingSummary {
@@ -149,13 +164,7 @@ export interface SessionDiagnosticParticipant {
   participant: ParticipantKind;
   model: string;
   status: "ok" | "failed" | "invalid_output";
-  raw: {
-    command: string;
-    args: string[];
-    stdout: string;
-    stderr: string;
-    exitCode: number | null;
-  };
+  raw: ParticipantRawExecution;
   resumeId?: string;
   response?: ParticipantResponse;
   failureKind?: "process_error" | "invalid_output";
@@ -193,13 +202,7 @@ export interface SessionDiagnosticParticipantView {
   participant: ParticipantKind;
   model: string;
   status: "ok" | "failed" | "invalid_output";
-  raw: {
-    command: string;
-    args: string[];
-    stdout: string;
-    stderr: string;
-    exitCode: number | null;
-  };
+  raw: ParticipantRawExecution;
   resumeId?: string;
   response?: ParticipantResponse;
   failureKind?: "process_error" | "invalid_output";

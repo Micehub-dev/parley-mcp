@@ -4,7 +4,7 @@
 
 Parley is an orchestrator-agnostic MCP server for running and managing multi-LLM parley sessions across Codex, Claude, and Gemini.
 
-The current codebase is at the diagnostics access hardening stage:
+The current codebase is at the production-readiness hardening stage:
 
 - Node.js + TypeScript
 - MCP server over stdio
@@ -21,6 +21,10 @@ The current codebase is at the diagnostics access hardening stage:
 - diagnostic inspection with replay/repair guidance
 - redacted-by-default diagnostic MCP views with explicit full-detail opt-in
 - next-safe repair action hints derived from diagnostics
+- participant subprocess timeout, termination, and output-size guardrails
+- atomic JSON persistence for core filesystem artifacts
+- explicit corrupted-artifact visibility on session/topic/diagnostic reads
+- documented real-CLI smoke workflow and release runbook baseline
 - automated service, adapter, and stdio MCP integration coverage
 
 ## Source Of Truth
@@ -31,7 +35,7 @@ Read these files first before making changes:
 2. `multi-cli-parley-architecture.md`
 3. `docs/project-operating-plan.md`
 4. `docs/mcp-contract-spec.md`
-5. `docs/sprints/2026-sprint-7.md`
+5. `docs/sprints/2026-sprint-8.md`
 
 If code and docs disagree, prefer:
 
@@ -93,10 +97,10 @@ npm run dev
 
 Priority order for upcoming work:
 
-1. broader orchestrator matrix verification
-2. keep diagnostics access redacted-by-default unless operators explicitly request full detail
-3. packaging direction only after Sprint 7 diagnostics hardening remains stable
-4. broader OS and transport verification after the highest-risk orchestrator cases
+1. keep subprocess guardrails, corruption visibility, and diagnostics redaction stable in CI
+2. expand real CLI and OS verification beyond the current Windows-first bar
+3. keep release runbook ownership and support-boundary docs aligned with runtime reality
+4. packaging direction only after Sprint 8 production-readiness hardening remains stable
 5. UI or extension work only as thin wrappers over the stable MCP core
 
 Do not jump ahead to UI or packaging unless the current sprint says so.
@@ -139,4 +143,7 @@ Escalate before changing:
 - `parley_search_topics` and `parley_get_workspace_board` are the current retrieval surfaces over promoted topic memory.
 - `parley_list_diagnostics` is the current operator-facing inspection surface; replay guidance and next-safe tool actions are derived at read time rather than stored in session state.
 - `parley_list_diagnostics` now returns redacted records by default; use `detailLevel: "full"` only for intentional local debugging.
+- participant subprocesses now enforce default timeout, kill-grace, and output-size guardrails; operators can override them with `PARLEY_PARTICIPANT_TIMEOUT_MS`, `PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES`, and `PARLEY_PARTICIPANT_KILL_GRACE_MS`.
+- filesystem reads now distinguish missing artifacts from invalid or unreadable ones, and JSON-backed artifacts write through atomic temp-file replacement.
+- `npm run smoke:real` is the current release-oriented real-CLI check; Windows Gemini wrapper installs may require explicit launcher overrides.
 - Packaging for Claude plugins, Gemini extensions, and UI surfaces is explicitly later-phase work.
