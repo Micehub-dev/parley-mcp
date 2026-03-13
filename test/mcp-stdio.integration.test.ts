@@ -174,7 +174,7 @@ test("stdio MCP flow supports start -> claim_lease -> step -> finish -> promote 
     assert.equal(state.state.status, "finished");
     assert.ok(state.state.participants.claude.resumeId);
     assert.ok(state.state.participants.gemini.resumeId);
-    assert.match(state.state.rollingSummary?.synopsis ?? "", /Agreements:/);
+    assert.match(state.state.rollingSummary?.synopsis ?? "", /Consensus:/);
     assert.equal(finished.parleySessionId, sessionId);
     assert.equal(finished.status, "finished");
     assert.equal(finished.summary, finished.conclusion.summary);
@@ -368,6 +368,9 @@ test("stdio MCP participant failures stay structured and persist diagnostics", a
         repairGuidance: {
           canRetrySameVersion: boolean;
           shouldReadStateFirst: boolean;
+          nextAction: {
+            tool: string;
+          };
         };
         record: {
           outcome: string;
@@ -406,6 +409,193 @@ test("stdio MCP participant failures stay structured and persist diagnostics", a
     assert.equal(diagnostics.diagnostics[0]?.record.outcome, "participant_failure");
     assert.equal(diagnostics.diagnostics[0]?.repairGuidance.canRetrySameVersion, true);
     assert.equal(diagnostics.diagnostics[0]?.repairGuidance.shouldReadStateFirst, false);
+    assert.equal(diagnostics.diagnostics[0]?.repairGuidance.nextAction.tool, "parley_step");
+  } finally {
+    await transport.close().catch(() => undefined);
+    if (sessionId) {
+      await rm(path.join(repoRoot, ".multi-llm", "sessions", sessionId), {
+        recursive: true,
+        force: true
+      });
+    }
+    await rm(binDir, { recursive: true, force: true });
+  }
+});
+
+test("stdio MCP reuses stored participant resume ids on later turns", async () => {
+  const binDir = await mkdtemp(path.join(os.tmpdir(), "parley-e2e-bin-"));
+  let sessionId: string | undefined;
+  const participantScriptPath = await installResumeAwareParticipants(binDir);
+  const transport = new StdioClientTransport({
+    command: getTsxCommandPath(),
+    args: getTsxArgs(),
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+      PARLEY_CLAUDE_COMMAND: process.execPath,
+      PARLEY_GEMINI_COMMAND: process.execPath,
+      PARLEY_CLAUDE_ARGS_JSON: JSON.stringify([participantScriptPath, "claude"]),
+      PARLEY_GEMINI_ARGS_JSON: JSON.stringify([participantScriptPath, "gemini"])
+    },
+    stderr: "pipe"
+  });
+  const client = new Client({
+    name: "parley-e2e-test-resume",
+    version: "1.0.0"
+  });
+
+  try {
+    await client.connect(transport);
+
+    const started = await callJsonTool<{
+      parleySessionId: string;
+    }>(client, "parley_start", {
+      topic: "Resume integration",
+      maxTurns: 3,
+      orchestrator: "claude",
+      orchestratorRunId: "e2e-run-004"
+    });
+    sessionId = started.parleySessionId;
+
+    const claimed = await callJsonTool<{
+      stateVersion: number;
+    }>(client, "parley_claim_lease", {
+      parleySessionId: sessionId,
+      orchestratorRunId: "e2e-run-004",
+      ttlSeconds: 300
+    });
+
+    const firstStep = await callJsonTool<{
+      stateVersion: number;
+      responses: {
+        claude: {
+          summary: string;
+        };
+        gemini: {
+          summary: string;
+        };
+      };
+    }>(client, "parley_step", {
+      parleySessionId: sessionId,
+      expectedStateVersion: claimed.stateVersion,
+      orchestratorRunId: "e2e-run-004"
+    });
+    const secondStep = await callJsonTool<{
+      responses: {
+        claude: {
+          summary: string;
+        };
+        gemini: {
+          summary: string;
+        };
+      };
+    }>(client, "parley_step", {
+      parleySessionId: sessionId,
+      expectedStateVersion: firstStep.stateVersion,
+      orchestratorRunId: "e2e-run-004"
+    });
+    const state = await callJsonTool<{
+      state: {
+        participants: {
+          claude: {
+            resumeId?: string;
+          };
+          gemini: {
+            resumeId?: string;
+          };
+        };
+      };
+    }>(client, "parley_state", {
+      parleySessionId: sessionId
+    });
+
+    assert.match(firstStep.responses.claude.summary, /started a new participant session/i);
+    assert.match(firstStep.responses.gemini.summary, /started a new participant session/i);
+    assert.equal(state.state.participants.claude.resumeId, "claude-resume-1");
+    assert.equal(state.state.participants.gemini.resumeId, "gemini-resume-1");
+    assert.match(secondStep.responses.claude.summary, /resumed from claude-resume-1/i);
+    assert.match(secondStep.responses.gemini.summary, /resumed from gemini-resume-1/i);
+  } finally {
+    await transport.close().catch(() => undefined);
+    if (sessionId) {
+      await rm(path.join(repoRoot, ".multi-llm", "sessions", sessionId), {
+        recursive: true,
+        force: true
+      });
+    }
+    await rm(binDir, { recursive: true, force: true });
+  }
+});
+
+test("stdio MCP returns a structured lease_conflict for conflicting orchestrator runs", async () => {
+  const binDir = await mkdtemp(path.join(os.tmpdir(), "parley-e2e-bin-"));
+  let sessionId: string | undefined;
+  const participantScriptPath = await installFakeParticipants(binDir);
+  const transport = new StdioClientTransport({
+    command: getTsxCommandPath(),
+    args: getTsxArgs(),
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}`,
+      PARLEY_CLAUDE_COMMAND: process.execPath,
+      PARLEY_GEMINI_COMMAND: process.execPath,
+      PARLEY_CLAUDE_ARGS_JSON: JSON.stringify([participantScriptPath, "claude"]),
+      PARLEY_GEMINI_ARGS_JSON: JSON.stringify([participantScriptPath, "gemini"])
+    },
+    stderr: "pipe"
+  });
+  const client = new Client({
+    name: "parley-e2e-test-lease-conflict",
+    version: "1.0.0"
+  });
+
+  try {
+    await client.connect(transport);
+
+    const started = await callJsonTool<{
+      parleySessionId: string;
+    }>(client, "parley_start", {
+      topic: "Lease conflict integration",
+      orchestrator: "gemini",
+      orchestratorRunId: "e2e-run-005"
+    });
+    sessionId = started.parleySessionId;
+
+    const claimed = await callJsonTool<{
+      stateVersion: number;
+    }>(client, "parley_claim_lease", {
+      parleySessionId: sessionId,
+      orchestratorRunId: "e2e-run-005",
+      ttlSeconds: 300
+    });
+
+    const result = await client.callTool({
+      name: "parley_step",
+      arguments: {
+        parleySessionId: sessionId,
+        expectedStateVersion: claimed.stateVersion,
+        orchestratorRunId: "e2e-run-006"
+      }
+    });
+
+    assert.equal(result.isError, true);
+    const payload = parseTextContent<{
+      error: {
+        code: string;
+        details?: {
+          leaseOwner?: string;
+          staleLease?: boolean;
+          retryable?: boolean;
+        };
+      };
+    }>(result);
+
+    assert.equal(payload.error.code, "lease_conflict");
+    assert.equal(payload.error.details?.leaseOwner, "e2e-run-005");
+    assert.equal(payload.error.details?.staleLease, false);
+    assert.equal(payload.error.details?.retryable, true);
   } finally {
     await transport.close().catch(() => undefined);
     if (sessionId) {
@@ -502,6 +692,39 @@ async function installFailingParticipants(binDir: string): Promise<string> {
       '  proposed_next_step: "Claude integration next step"',
       "};",
       'process.stdout.write(JSON.stringify({ result: JSON.stringify(response), session_id: "claude-failure-session" }));'
+    ].join("\n"),
+    "utf8"
+  );
+  await chmod(participantScriptPath, 0o755);
+  return participantScriptPath;
+}
+
+async function installResumeAwareParticipants(binDir: string): Promise<string> {
+  const participantScriptPath = path.join(binDir, "resume-aware-participant.mjs");
+  await writeFile(
+    participantScriptPath,
+    [
+      "#!/usr/bin/env node",
+      'const [kind, ...args] = process.argv.slice(2);',
+      'const resumeFlagIndex = args.indexOf("--resume");',
+      "const resumeId =",
+      '  resumeFlagIndex >= 0 && args[resumeFlagIndex + 1]',
+      '    ? args[resumeFlagIndex + 1]',
+      '    : `${kind}-resume-1`;',
+      'const summary = resumeFlagIndex >= 0',
+      '  ? `${kind} resumed from ${resumeId}`',
+      '  : `${kind} started a new participant session`;',
+      "const response = {",
+      '  stance: kind === "claude" ? "agree" : "refine",',
+      "  summary,",
+      '  arguments: [`${kind} resume argument`],',
+      '  questions: [],',
+      '  proposed_next_step: "Document the resume behavior"',
+      "};",
+      'const payload = kind === "claude"',
+      "  ? { result: JSON.stringify(response), session_id: resumeId }",
+      "  : { response: JSON.stringify(response), sessionId: resumeId };",
+      "process.stdout.write(JSON.stringify(payload));"
     ].join("\n"),
     "utf8"
   );

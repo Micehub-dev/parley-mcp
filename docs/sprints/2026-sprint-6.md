@@ -11,7 +11,7 @@
 
 ## Status
 
-- Planned as of 2026-03-13
+- Functionally complete as of 2026-03-13
 
 ## Why This Sprint Now
 
@@ -22,15 +22,15 @@
 
 ## Committed Scope
 
-- [ ] Expand orchestrator-oriented verification beyond the currently implemented Windows-first matrix
-- [ ] Improve heuristic synthesis quality for `rollingSummary`, `conclusion`, and promoted topic memory
-- [ ] Add minimal repair-oriented helper tooling only where `parley_list_diagnostics` still leaves operators blocked
-- [ ] Refresh planning, matrix, and risk docs to reflect the new hardening bar and any remaining gaps
+- [x] Expand orchestrator-oriented verification beyond the currently implemented Windows-first matrix
+- [x] Improve heuristic synthesis quality for `rollingSummary`, `conclusion`, and promoted topic memory
+- [x] Add minimal repair-oriented helper tooling only where `parley_list_diagnostics` still leaves operators blocked
+- [x] Refresh planning, matrix, and risk docs to reflect the new hardening bar and any remaining gaps
 
 ## Stretch Scope
 
-- [ ] Add one more cross-client resume scenario beyond the minimum planned matrix additions
-- [ ] Add lightweight operator helpers for replay-boundary follow-up after `storage_failure`
+- [x] Add one more cross-client resume scenario beyond the minimum planned matrix additions
+- [x] Add lightweight operator helpers for replay-boundary follow-up after `storage_failure`
 - [ ] Capture a packaging-direction note or ADR only if Sprint 6 hardening exits cleanly
 
 ## Explicit Non-Goals
@@ -43,11 +43,11 @@
 
 ## Exit Criteria
 
-- [ ] The test matrix no longer leaves the highest-risk orchestrator scenarios only as planned placeholders
-- [ ] At least one synthesis refinement measurably improves promoted memory quality without regressing contract stability
-- [ ] Operators gain a smaller, clearer path through the remaining replay or repair edge cases
-- [ ] Packaging stays explicitly downstream of Sprint 6 unless the hardening scope is complete
-- [ ] `npm test`, `npm run lint`, `npm run typecheck`, and `npm run build` are green
+- [x] The test matrix no longer leaves the highest-risk orchestrator scenarios only as planned placeholders
+- [x] At least one synthesis refinement measurably improves promoted memory quality without regressing contract stability
+- [x] Operators gain a smaller, clearer path through the remaining replay or repair edge cases
+- [x] Packaging stays explicitly downstream of Sprint 6 unless the hardening scope is complete
+- [x] `npm test`, `npm run lint`, `npm run typecheck`, and `npm run build` are green
 
 ## Dependencies
 
@@ -64,9 +64,9 @@
 
 ### Task 1. Orchestrator Verification Expansion
 
-- [ ] Convert the remaining planned matrix gaps into implemented automated scenarios where practical
-- [ ] Add explicit coverage for session resume reuse and lease-conflict handling across orchestrator-labeled runs
-- [ ] Keep verification centered on MCP contract behavior rather than client-specific UX conventions
+- [x] Convert the remaining planned matrix gaps into implemented automated scenarios where practical
+- [x] Add explicit coverage for session resume reuse and lease-conflict handling across orchestrator-labeled runs
+- [x] Keep verification centered on MCP contract behavior rather than client-specific UX conventions
 
 Review focus:
 
@@ -91,9 +91,9 @@ Verification:
 
 ### Task 2. Synthesis Quality Refinement
 
-- [ ] Review the current heuristic summary and conclusion builders against the promoted-memory surfaces they now feed
-- [ ] Tighten how agreements, disagreements, open questions, and action items accumulate across turns
-- [ ] Reduce duplication and low-signal carryover in promoted topic memory without changing the MCP contract shape unless necessary
+- [x] Review the current heuristic summary and conclusion builders against the promoted-memory surfaces they now feed
+- [x] Tighten how agreements, disagreements, open questions, and action items accumulate across turns
+- [x] Reduce duplication and low-signal carryover in promoted topic memory without changing the MCP contract shape unless necessary
 
 Review focus:
 
@@ -118,9 +118,9 @@ Verification:
 
 ### Task 3. Minimal Repair Helper Tooling
 
-- [ ] Identify the concrete failure modes where diagnostic inspection alone still leaves operators uncertain about the next safe action
-- [ ] Add only the smallest helper surface needed for replay-boundary clarity or repair follow-up
-- [ ] Keep repair guidance derived and tool-first rather than moving operational internals into core session state
+- [x] Identify the concrete failure modes where diagnostic inspection alone still leaves operators uncertain about the next safe action
+- [x] Add only the smallest helper surface needed for replay-boundary clarity or repair follow-up
+- [x] Keep repair guidance derived and tool-first rather than moving operational internals into core session state
 
 Review focus:
 
@@ -145,9 +145,9 @@ Verification:
 
 ### Task 4. Roadmap and Risk Refresh
 
-- [ ] Update planning docs so Sprint 6 consistently reflects hardening rather than premature packaging work
-- [ ] Refresh the risk register based on what verification and synthesis work does or does not close
-- [ ] Keep contract and sprint documentation aligned with the actual next milestone
+- [x] Update planning docs so Sprint 6 consistently reflects hardening rather than premature packaging work
+- [x] Refresh the risk register based on what verification and synthesis work does or does not close
+- [x] Keep contract and sprint documentation aligned with the actual next milestone
 
 Review focus:
 
@@ -178,3 +178,10 @@ Verification:
 3. Add only the repair helpers justified by real remaining operator ambiguity.
 4. Refresh test-matrix, risk, and roadmap docs.
 5. Reassess packaging direction only after the Sprint 6 hardening bar is met.
+
+## Outcome Notes
+
+- Automated stdio coverage now includes participant resume reuse and lease-conflict handling across orchestrator-labeled runs.
+- `rollingSummary`, `conclusion`, and promoted topic memory now deduplicate repeated questions and action items while avoiding consensus carryover from `undecided` turns.
+- `parley_list_diagnostics` now includes additive `nextAction` helper output so operators can move from inspection to the next safe tool call more directly.
+- Packaging direction remains deferred; no plugin, extension, or UI implementation work was pulled into Sprint 6.

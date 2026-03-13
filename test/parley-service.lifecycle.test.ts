@@ -293,7 +293,7 @@ test("advanceStep executes both participants, persists resume IDs, and finishes 
     assert.equal(state.latestTurn?.speakerOrder[0], "gemini");
     assert.equal(step.rollingSummary?.updatedAt, state.rollingSummary?.updatedAt);
     assert.equal(step.latestSummary, state.rollingSummary?.synopsis);
-    assert.match(state.rollingSummary?.synopsis ?? "", /Agreements:/);
+    assert.match(state.rollingSummary?.synopsis ?? "", /Consensus:/);
     assert.match(transcript, /Step 1 requested\. Nudge: Close the loop/);
     assert.match(transcript, /Claude responds with agreement\./);
     assert.match(transcript, /Gemini opens with a refinement\./);
@@ -567,6 +567,7 @@ test("advanceStep surfaces replay boundary when transcript append fails after st
     assert.equal(diagnostics.diagnostics.length, 1);
     assert.equal(diagnostics.diagnostics[0]?.repairGuidance.shouldReadStateFirst, true);
     assert.equal(diagnostics.diagnostics[0]?.repairGuidance.canRetrySameVersion, false);
+    assert.equal(diagnostics.diagnostics[0]?.repairGuidance.nextAction.tool, "parley_state");
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -635,6 +636,96 @@ test("advanceStep maintains a rolling summary across multiple committed turns", 
   }
 });
 
+test("synthesis deduplicates repeated prompts and avoids promoting undecided turns into consensus", async () => {
+  const fixture = await createFixture(
+    createMockAdapters({
+      claude: async (input) =>
+        successResult(
+          "claude",
+          input.turn === 1
+            ? {
+                stance: "agree",
+                summary: "Adopt the phased rollout.",
+                arguments: ["Claude supports the phased rollout."],
+                questions: ["Who owns the checklist?"],
+                proposed_next_step: "Document the checklist."
+              }
+            : {
+                stance: "undecided",
+                summary: "Claude wants timeline validation.",
+                arguments: ["Claude needs stronger validation evidence."],
+                questions: ["Do we need a dry run?"],
+                proposed_next_step: "Run a dry run."
+              }
+        ),
+      gemini: async (input) =>
+        successResult(
+          "gemini",
+          input.turn === 1
+            ? {
+                stance: "refine",
+                summary: "Adopt the phased rollout with a canary.",
+                arguments: ["Gemini narrows the rollout blast radius."],
+                questions: ["Who owns the checklist"],
+                proposed_next_step: "Document the checklist"
+              }
+            : {
+                stance: "refine",
+                summary: "Gemini also wants timeline validation.",
+                arguments: ["Gemini agrees a dry run would help."],
+                questions: ["Do we need a dry run"],
+                proposed_next_step: "Run a dry run"
+              }
+        )
+    }).adapters
+  );
+
+  try {
+    const started = await fixture.service.startSession({
+      workspaceId: "default",
+      workspaceRoot: fixture.rootDir,
+      topic: "Signal quality",
+      orchestrator: "codex",
+      orchestratorRunId: "run-085"
+    });
+    const lease = await fixture.service.claimLease({
+      parleySessionId: started.parleySessionId,
+      orchestratorRunId: "run-085",
+      ttlSeconds: 300
+    });
+
+    const firstStep = await fixture.service.advanceStep({
+      parleySessionId: started.parleySessionId,
+      expectedStateVersion: lease.stateVersion,
+      orchestratorRunId: "run-085"
+    });
+    await fixture.service.advanceStep({
+      parleySessionId: started.parleySessionId,
+      expectedStateVersion: firstStep.stateVersion,
+      orchestratorRunId: "run-085"
+    });
+
+    const finished = await fixture.service.finishSession(started.parleySessionId, "run-085");
+
+    assert.deepEqual(finished.conclusion.consensus, [
+      "Adopt the phased rollout.",
+      "Adopt the phased rollout with a canary."
+    ]);
+    assert.deepEqual(finished.conclusion.openQuestions, [
+      "Who owns the checklist?",
+      "Do we need a dry run?"
+    ]);
+    assert.deepEqual(finished.conclusion.actionItems, [
+      "Document the checklist.",
+      "Run a dry run."
+    ]);
+    assert.match(finished.conclusion.summary, /partial alignment/i);
+    assert.doesNotMatch(finished.conclusion.summary, /Latest turn:/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("finishSession returns a stable structured conclusion derived from the rolling summary", async () => {
   const fixture = await createFixture(
     createMockAdapters({
@@ -686,6 +777,8 @@ test("finishSession returns a stable structured conclusion derived from the roll
       "Gemini refines the plan."
     ]);
     assert.equal(firstFinish.conclusion.recommendedDisposition, "resolved");
+    assert.doesNotMatch(firstFinish.conclusion.summary, /Latest turn:/);
+    assert.match(firstFinish.conclusion.summary, /working resolution/i);
     assert.deepEqual(secondFinish.conclusion, firstFinish.conclusion);
   } finally {
     await fixture.cleanup();
@@ -769,6 +862,8 @@ test("promoteSummary updates linked topic memory and stays idempotent", async ()
     ]);
     assert.equal(topic?.decisionSummary, promoted.topic.decisionSummary);
     assert.equal(topic?.canonicalSummary, promoted.topic.canonicalSummary);
+    assert.doesNotMatch(topic?.decisionSummary ?? "", /Latest turn:/);
+    assert.match(topic?.canonicalSummary ?? "", /Topic: Promotion contract\./);
     assert.deepEqual(topic?.linkedSessionIds, [started.parleySessionId]);
     assert.equal(topic?.status, "resolved");
     assert.equal(topic?.statusHistory.length, 2);
@@ -966,6 +1061,11 @@ test("listDiagnostics returns operator repair guidance for persisted failures", 
     assert.equal(diagnostics.diagnostics[0]?.record.participants[0]?.participant, "claude");
     assert.equal(diagnostics.diagnostics[0]?.repairGuidance.canRetrySameVersion, true);
     assert.equal(diagnostics.diagnostics[0]?.repairGuidance.shouldReadStateFirst, false);
+    assert.equal(diagnostics.diagnostics[0]?.repairGuidance.nextAction.tool, "parley_step");
+    assert.equal(
+      diagnostics.diagnostics[0]?.repairGuidance.nextAction.arguments.expectedStateVersion,
+      lease.stateVersion
+    );
     assert.match(
       diagnostics.diagnostics[0]?.repairGuidance.recommendedSteps.join(" ") ?? "",
       /launcher command/i

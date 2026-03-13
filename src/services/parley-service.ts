@@ -6,6 +6,8 @@ import type { ParticipantRawExecution } from "../participants/types.js";
 import type { ParticipantAdapterRegistry } from "../participants/types.js";
 import { FileSystemStore } from "../storage/fs-store.js";
 import type {
+  DiagnosticRepairAction,
+  DiagnosticRepairGuidance,
   OrchestratorAuditLogEntry,
   ParleyConfig,
   ParleySessionState,
@@ -413,7 +415,7 @@ export class ParleyService {
       ...(input.userNudge ? { userNudge: input.userNudge } : {}),
       responses
     };
-    state.rollingSummary = this.buildRollingSummary(state.rollingSummary, responses, now);
+    state.rollingSummary = this.buildRollingSummary(state.topic, state.rollingSummary, responses, now);
     state.latestSummary = state.rollingSummary.synopsis;
 
     if (state.turn >= state.maxTurns) {
@@ -697,12 +699,7 @@ export class ParleyService {
     diagnostics: Array<{
       diagnosticId: string;
       record: SessionDiagnosticRecord;
-      repairGuidance: {
-        summary: string;
-        recommendedSteps: string[];
-        canRetrySameVersion: boolean;
-        shouldReadStateFirst: boolean;
-      };
+      repairGuidance: DiagnosticRepairGuidance;
     }>;
   }> {
     await this.getSessionState(input.parleySessionId);
@@ -814,12 +811,16 @@ export class ParleyService {
   }
 
   private buildRollingSummary(
+    topic: string,
     previousSummary: RollingSummary | undefined,
     responses: Record<ParticipantKind, ParticipantResponse>,
     updatedAt: string
   ): RollingSummary {
+    const canAccumulateAgreements = [responses.claude.stance, responses.gemini.stance].every(
+      (stance) => stance === "agree" || stance === "refine"
+    );
     const nextAgreements =
-      responses.claude.stance !== "disagree" && responses.gemini.stance !== "disagree"
+      canAccumulateAgreements
         ? this.mergeUniqueStrings(previousSummary?.agreements, [
             responses.claude.summary,
             responses.gemini.summary
@@ -843,10 +844,12 @@ export class ParleyService {
 
     return {
       synopsis: this.buildRollingSynopsis(
+        topic,
         responses,
         nextAgreements,
         nextDisagreements,
-        nextOpenQuestions
+        nextOpenQuestions,
+        nextActionItems
       ),
       agreements: nextAgreements,
       disagreements: nextDisagreements,
@@ -857,23 +860,29 @@ export class ParleyService {
   }
 
   private buildRollingSynopsis(
+    topic: string,
     responses: Record<ParticipantKind, ParticipantResponse>,
     agreements: string[],
     disagreements: string[],
-    openQuestions: string[]
+    openQuestions: string[],
+    actionItems: string[]
   ): string {
-    const parts: string[] = [];
+    const parts = [`Topic: ${topic}.`];
 
     if (agreements.length > 0) {
-      parts.push(`Agreements: ${agreements.join("; ")}`);
+      parts.push(`Consensus: ${this.formatInsightList(agreements, 2)}`);
     }
 
     if (disagreements.length > 0) {
-      parts.push(`Disagreements: ${disagreements.join("; ")}`);
+      parts.push(`Disagreements: ${this.formatInsightList(disagreements, 2)}`);
     }
 
     if (openQuestions.length > 0) {
-      parts.push(`Open questions: ${openQuestions.join("; ")}`);
+      parts.push(`Open questions: ${this.formatInsightList(openQuestions, 2)}`);
+    }
+
+    if (actionItems.length > 0) {
+      parts.push(`Next actions: ${this.formatInsightList(actionItems, 2)}`);
     }
 
     parts.push(
@@ -890,11 +899,9 @@ export class ParleyService {
     const openQuestions = rollingSummary?.openQuestions ?? [];
     const actionItems = rollingSummary?.actionItems ?? [];
     const summary =
-      rollingSummary?.synopsis ??
-      state.latestSummary ??
-      (state.latestTurn
-        ? `Latest turn: Claude (${state.latestTurn.responses.claude.stance}) ${state.latestTurn.responses.claude.summary} | Gemini (${state.latestTurn.responses.gemini.stance}) ${state.latestTurn.responses.gemini.summary}`
-        : "Parley session finished before any participant turns were committed.");
+      state.turn === 0 && !state.latestTurn
+        ? "Parley session finished before any participant turns were committed."
+        : this.buildConclusionSummary(state, consensus, disagreements, openQuestions, actionItems);
 
     return {
       summary,
@@ -934,49 +941,113 @@ export class ParleyService {
     state: ParleySessionState,
     conclusion: SessionConclusion
   ): string {
-    const parts = [conclusion.summary];
+    const parts = [`Topic: ${state.topic}.`, conclusion.summary];
 
     if (conclusion.consensus.length > 0) {
-      parts.push(`Consensus: ${conclusion.consensus.join("; ")}`);
+      parts.push(`Consensus: ${this.formatInsightList(conclusion.consensus, 3)}`);
     }
 
     if (conclusion.disagreements.length > 0) {
-      parts.push(`Disagreements: ${conclusion.disagreements.join("; ")}`);
+      parts.push(`Disagreements: ${this.formatInsightList(conclusion.disagreements, 3)}`);
     }
 
     if (conclusion.openQuestions.length > 0) {
-      parts.push(`Open questions: ${conclusion.openQuestions.join("; ")}`);
+      parts.push(`Open questions: ${this.formatInsightList(conclusion.openQuestions, 3)}`);
     }
 
     if (conclusion.actionItems.length > 0) {
-      parts.push(`Action items: ${conclusion.actionItems.join("; ")}`);
-    }
-
-    if (state.topic && !parts[0]?.includes(state.topic)) {
-      parts.push(`Topic: ${state.topic}`);
+      parts.push(`Action items: ${this.formatInsightList(conclusion.actionItems, 3)}`);
     }
 
     return parts.join(" ");
   }
 
   private mergeUniqueStrings(existing: string[] | undefined, additions: string[]): string[] {
-    const merged = new Set<string>();
+    const merged = new Map<string, string>();
 
     for (const value of existing ?? []) {
-      const normalized = value.trim();
-      if (normalized) {
-        merged.add(normalized);
+      const cleaned = this.cleanInsight(value);
+      if (cleaned) {
+        merged.set(this.normalizeInsightKey(cleaned), cleaned);
       }
     }
 
     for (const value of additions) {
-      const normalized = value.trim();
-      if (normalized) {
-        merged.add(normalized);
+      const cleaned = this.cleanInsight(value);
+      if (cleaned) {
+        const normalizedKey = this.normalizeInsightKey(cleaned);
+        if (!merged.has(normalizedKey)) {
+          merged.set(normalizedKey, cleaned);
+        }
       }
     }
 
-    return [...merged];
+    return [...merged.values()];
+  }
+
+  private buildConclusionSummary(
+    state: ParleySessionState,
+    consensus: string[],
+    disagreements: string[],
+    openQuestions: string[],
+    actionItems: string[]
+  ): string {
+    const parts = [this.buildConclusionLead(state.topic, consensus, disagreements, openQuestions)];
+
+    if (consensus.length > 0) {
+      parts.push(`Consensus: ${this.formatInsightList(consensus, 2)}`);
+    }
+
+    if (disagreements.length > 0) {
+      parts.push(`Remaining disagreements: ${this.formatInsightList(disagreements, 2)}`);
+    }
+
+    if (openQuestions.length > 0) {
+      parts.push(`Open questions: ${this.formatInsightList(openQuestions, 2)}`);
+    }
+
+    if (actionItems.length > 0) {
+      parts.push(`Next actions: ${this.formatInsightList(actionItems, 2)}`);
+    }
+
+    return parts.join(" ");
+  }
+
+  private buildConclusionLead(
+    topic: string,
+    consensus: string[],
+    disagreements: string[],
+    openQuestions: string[]
+  ): string {
+    if (consensus.length > 0 && disagreements.length === 0 && openQuestions.length === 0) {
+      return `The parley reached a working resolution on ${topic}.`;
+    }
+
+    if (consensus.length > 0) {
+      return `The parley clarified ${topic} and established partial alignment.`;
+    }
+
+    if (disagreements.length > 0) {
+      return `The parley surfaced unresolved disagreement on ${topic}.`;
+    }
+
+    return `The parley advanced discussion on ${topic}.`;
+  }
+
+  private formatInsightList(values: string[], limit: number): string {
+    const visible = values.slice(0, limit);
+    const remaining = values.length - visible.length;
+    const text = visible.join("; ");
+
+    return remaining > 0 ? `${text}; +${remaining} more` : text;
+  }
+
+  private cleanInsight(value: string): string {
+    return value.replace(/\s+/gu, " ").trim();
+  }
+
+  private normalizeInsightKey(value: string): string {
+    return this.cleanInsight(value).toLowerCase().replace(/[.?!]+$/u, "");
   }
 
   private areStringArraysEqual(left: string[], right: string[]) {
@@ -1068,7 +1139,7 @@ export class ParleyService {
     };
   }
 
-  private buildRepairGuidance(record: SessionDiagnosticRecord) {
+  private buildRepairGuidance(record: SessionDiagnosticRecord): DiagnosticRepairGuidance {
     if (record.outcome === "participant_failure") {
       const failedParticipants = record.participants.filter((participant) => participant.status !== "ok");
       const hasProcessFailure = failedParticipants.some(
@@ -1091,7 +1162,8 @@ export class ParleyService {
               "Retry with the same expectedStateVersion only after the output issue is fixed."
             ],
         canRetrySameVersion: record.stateCommitStatus === "not_committed",
-        shouldReadStateFirst: false
+        shouldReadStateFirst: false,
+        nextAction: this.buildRepairAction(record)
       };
     }
 
@@ -1104,7 +1176,8 @@ export class ParleyService {
           "Repair transcript storage only after confirming the current session version."
         ],
         canRetrySameVersion: false,
-        shouldReadStateFirst: true
+        shouldReadStateFirst: true,
+        nextAction: this.buildRepairAction(record)
       };
     }
 
@@ -1116,7 +1189,32 @@ export class ParleyService {
         "Retry parley_step with the same expectedStateVersion after the storage issue is resolved."
       ],
       canRetrySameVersion: true,
-      shouldReadStateFirst: false
+      shouldReadStateFirst: false,
+      nextAction: this.buildRepairAction(record)
+    };
+  }
+
+  private buildRepairAction(record: SessionDiagnosticRecord): DiagnosticRepairAction {
+    if (record.stateCommitStatus === "session_state_committed") {
+      return {
+        tool: "parley_state",
+        arguments: {
+          parleySessionId: record.sessionId
+        },
+        reason: "The session may already include the committed turn, so inspect current state before retrying."
+      };
+    }
+
+    return {
+      tool: "parley_step",
+      arguments: {
+        parleySessionId: record.sessionId,
+        expectedStateVersion: record.expectedStateVersion,
+        orchestratorRunId: record.orchestratorRunId,
+        speakerOrder: [...record.speakerOrder],
+        ...(record.userNudge ? { userNudge: record.userNudge } : {})
+      },
+      reason: "The failed turn was not committed, so the same step can be retried after the underlying issue is fixed."
     };
   }
 

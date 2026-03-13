@@ -29,7 +29,7 @@ As of 2026-03-13, the repository is beyond the bootstrap, placeholder, and runti
 - Workspace boards and operator-facing diagnostic inspection are now exposed through MCP tools.
 - Automated coverage exists at the service, adapter, and stdio MCP integration layers.
 
-The next product gap is improving synthesis quality, repair ergonomics, and broader orchestrator verification on top of the now-stable Sprint 5 retrieval and operator surfaces.
+Sprint 6 hardening is now functionally complete ahead of the original calendar window. The next product gap is deciding packaging direction only after the harder contract, synthesis, and repair surfaces stay stable and diagnostics access rules are clearer.
 
 ## 2. Working Source Of Truth
 
@@ -274,12 +274,16 @@ Goal:
 
 - reduce remaining orchestrator ambiguity, improve promoted-memory quality, and add the smallest repair helpers that materially unblock operators
 
-Planned scope:
+Status:
 
-- broader orchestrator matrix coverage
+- Functionally complete as of 2026-03-13
+
+Delivered scope:
+
+- broader orchestrator matrix coverage for resume reuse and lease-conflict handling
 - synthesis-quality refinement on top of `rollingSummary`, `conclusion`, and promoted topic memory
-- minimal repair-oriented helper tooling where `parley_list_diagnostics` is still insufficient
-- packaging direction only if the above stability work lands cleanly
+- additive repair-oriented helper output on `parley_list_diagnostics`
+- planning, matrix, and risk refresh that keeps packaging explicitly downstream of the hardening bar
 
 ## 7. Epic View
 
@@ -354,16 +358,15 @@ Done when:
 
 ### Work That Should Happen Now
 
-- workspace and topic search
-- operator-facing diagnostic access
-- replay and repair workflows
-- broader orchestrator matrix coverage
+- keep the Sprint 6 verification and synthesis bar stable in CI
+- clarify redaction and access rules before diagnostics-oriented helper surfaces expand further
+- revisit packaging direction only as a thin-wrapper follow-up to the hardened MCP core
 
 ### Work That Should Happen Soon After
 
-- topic-memory refinement beyond first-pass heuristic synthesis
-- cross-client validation beyond the current Codex-driven stdio path
-- packaging direction once operator workflows stabilize
+- broader OS and transport validation beyond the current Windows-first matrix
+- packaging direction once the Sprint 6 hardening surface proves stable
+- redaction-aware operator ergonomics beyond the current local inspection scope
 
 ### Work That Should Happen Later
 
@@ -415,7 +418,7 @@ Mitigation:
 
 ### Next Implementation Priority
 
-1. Broaden orchestrator verification coverage beyond the current Windows-first stdio matrix.
-2. Revisit heuristic synthesis quality now that retrieval and board surfaces exist.
-3. Add minimal repair helpers only where diagnostic inspection still leaves operators blocked.
-4. Revisit packaging direction only after the Sprint 6 hardening work is stable.
+1. Keep the new resume-reuse and lease-conflict verification paths green and expand only if new drift appears.
+2. Tighten diagnostics redaction and access rules before helper output grows beyond local operator use.
+3. Revisit packaging direction only after the Sprint 6 hardening work stays stable.
+4. Expand OS and transport coverage later if those risks rise above packaging-direction work.
