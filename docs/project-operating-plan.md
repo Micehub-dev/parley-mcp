@@ -41,6 +41,8 @@ As of 2026-03-13, the repository is beyond the bootstrap, placeholder, and runti
 
 Sprint 6 hardening is now functionally complete ahead of the original calendar window. Sprint 7 closed the immediate diagnostics access gap, Sprint 8 landed the intended production-readiness hardening pass, Sprint 9 verification and acceptance work landed early enough to tighten the support statement before packaging direction is revisited, and Sprint 10 production-use evidence and release operationalization work is now functionally complete as of 2026-03-13.
 
+Sprint 11 is now planned as the next production-readiness sprint, focused on Windows CI parity, release-evidence automation, and a tighter Gemini usefulness bar rather than new end-user surface area.
+
 ## 2. Working Source Of Truth
 
 When planning or making scope decisions, prefer the following order:
@@ -397,6 +399,34 @@ Exit bar:
 - Gemini remains contract-valid and is materially more useful in real smoke or the residual quality caveat is documented honestly
 - release review can rely on one repeatable evidence path across smoke, acceptance, matrix, and runbook docs
 
+### Sprint 11: Windows Verification Parity and Release Automation
+
+Window: 2026-05-08 to 2026-05-21
+
+Goal:
+
+- add Windows automation parity for the current validation bar
+- reduce manual release-review work by generating reusable smoke evidence
+- tighten Gemini operator usefulness without widening the shared contract
+
+Status:
+
+- Planned
+
+Planned scope:
+
+- add `windows-latest` CI coverage for install, lint, typecheck, test, and build while preserving the explicit Linux automation lane
+- turn smoke output into a release-evidence artifact or directly reusable note payload
+- tighten Gemini fallback handling around default next steps and low-detail but technically valid responses
+- refresh README, matrix, risk, and release docs around the new production-readiness baseline
+
+Exit bar:
+
+- Windows automation evidence exists alongside the current Ubuntu CI lane, or the sprint ends with an explicit documented reason it could not be added
+- release review can rely on one generated smoke evidence artifact rather than manual reconstruction
+- Gemini remains contract-valid and is more often materially useful in real smoke
+- packaging direction stays downstream of the stronger automation and evidence bar
+
 ## 7. Epic View
 
 ### Epic 1. Core Orchestration
@@ -470,14 +500,15 @@ Done when:
 
 ### Work That Should Happen Now
 
-- expand real-environment verification only when an additional environment is actually exercised
+- add Windows automation parity so the Windows-first real-operator path is not guarded only by manual smoke
+- reduce manual release-review work by generating reusable release evidence directly from the smoke workflow
 - improve Gemini operator usefulness in real smoke without widening the shared participant contract
 - keep the Codex Desktop acceptance checklist, real-CLI smoke path, support-boundary wording, and release evidence docs aligned with runtime reality
 - preserve the current narrow macOS wording until an actual macOS environment is exercised
 
 ### Work That Should Happen Soon After
 
-- packaging direction once the Sprint 10 production-use evidence and release operationalization bar proves stable
+- packaging direction once the Sprint 11 production-readiness bar proves stable
 - broader transport validation if it rises above the current stdio-first release posture
 - stronger access policy options if diagnostics move beyond local operator use
 
@@ -526,15 +557,18 @@ Mitigation:
 ### This Week
 
 - keep the diagnostics redaction defaults, subprocess guardrails, and Gemini normalization coverage green in CI
+- add and stabilize a `windows-latest` automation lane for the existing validation bar
 - keep the current release-evidence template and smoke output fields aligned whenever release review steps change
-- review whether a real Linux CLI environment is actually available before broadening the current Windows-first support wording
 - rerun the Windows smoke and Codex Desktop acceptance path whenever launcher or release-installation behavior changes
+- review whether a real Linux CLI environment is actually available before broadening the current Windows-first support wording
 
 ### Next Implementation Priority
 
-1. Expand real-CLI and OS verification beyond the current Windows-first statement only when additional environments are actually exercised.
-2. Treat Linux and macOS verification as separate evidence tracks; CI is acceptable Linux automation evidence, but do not claim macOS stability without an actual macOS run.
+1. Add Windows automation parity for install, lint, typecheck, test, and build so the Windows-first real-operator path is covered by CI as well as manual smoke.
+2. Generate reusable release evidence directly from the smoke workflow so maintainers do not manually reconstruct launcher, environment, and usefulness facts during release review.
 3. Keep Gemini operator usefulness reviewable through smoke-time classification and regression coverage while preserving the shared participant contract.
-4. Keep the Codex Desktop acceptance path, smoke evidence, test matrix, release-evidence template, and runbook aligned whenever release or installation behavior changes.
-5. Revisit packaging direction only after the Sprint 10 production-use evidence bar stays stable.
-6. Consider stronger access policy options only if diagnostics move beyond local operator use.
+4. Expand real-CLI and OS verification beyond the current Windows-first statement only when additional environments are actually exercised.
+5. Treat Linux and macOS verification as separate evidence tracks; CI is acceptable Linux automation evidence, but do not claim macOS stability without an actual macOS run.
+6. Keep the Codex Desktop acceptance path, smoke evidence, test matrix, release-evidence template, and runbook aligned whenever release or installation behavior changes.
+7. Revisit packaging direction only after the Sprint 11 production-use evidence bar stays stable.
+8. Consider stronger access policy options only if diagnostics move beyond local operator use.
