@@ -4,7 +4,7 @@
 
 Parley is an orchestrator-agnostic MCP server for running and managing multi-LLM parley sessions across Codex, Claude, and Gemini.
 
-The current codebase is at the Windows-first production-readiness hardening stage, with Sprint 11 focused on Windows CI parity, generated release evidence, and tighter Gemini usefulness review:
+The current codebase is at the Sprint 12 evidence-alignment and release-signal hardening stage, with Sprint 12 focused on aligning the latest exercised evidence, tightening Gemini usefulness review, and simplifying generated release artifacts:
 
 - Node.js + TypeScript
 - MCP server over stdio
@@ -101,13 +101,14 @@ npm run dev
 
 Priority order for upcoming work:
 
-1. add a read-only workspace-scoped file-reading MCP tool so orchestrators can share absolute-path or workspace-relative file context without arbitrary filesystem access
-2. keep the new `ubuntu-latest` and `windows-latest` automation lanes green while the Windows-first support boundary remains narrow
-3. improve Gemini operator usefulness in real smoke without widening the shared participant contract
-4. keep release evidence collection repeatable across smoke, acceptance, matrix, and runbook docs
-5. rerun Windows real smoke whenever launcher, authentication, or release-installation behavior changes
-6. packaging direction only after the Sprint 11 production-readiness bar remains stable
-7. UI or extension work only as thin wrappers over the stable MCP core
+1. keep smoke, sprint, matrix, and release docs aligned to the latest exercised evidence set
+2. improve Gemini operator usefulness in real smoke without widening the shared participant contract
+3. keep generated release evidence concise and directly attachable during review
+4. rerun Windows real smoke whenever launcher, authentication, or release-installation behavior changes
+5. keep the `ubuntu-latest` and `windows-latest` automation lanes green while the Windows-first support boundary remains narrow
+6. add a read-only workspace-scoped file-reading MCP tool only after Sprint 12 closes cleanly
+7. packaging direction only after the Sprint 12 production-readiness bar remains stable
+8. UI or extension work only as thin wrappers over the stable MCP core
 
 Do not jump ahead to UI or packaging unless the current sprint says so.
 
@@ -154,8 +155,10 @@ Escalate before changing:
 - filesystem reads now distinguish missing artifacts from invalid or unreadable ones, and JSON-backed artifacts write through atomic temp-file replacement.
 - `npm run smoke:real` is the current release-oriented real-CLI check; Windows Gemini wrapper installs may require explicit launcher overrides.
 - `npm run smoke:real` now emits `releaseEvidence` and `releaseEvidenceMarkdown`, and writes reusable `.json` plus `.md` artifacts when `PARLEY_SMOKE_EVIDENCE_DIR` is set.
-- usefulness assessment now treats thin default-next-step Gemini replies as fallback-grade even when they are still contract-valid.
-- the most recent documented clean Windows smoke pass produced a materially useful Gemini response on 2026-03-13, but a later local Codex-run rerun on the same date timed out in Gemini on this workstation and should be revalidated before release signoff.
+- usefulness assessment now treats default-next-step Gemini replies as fallback-grade even when they still include a small amount of supporting detail.
+- the latest documented Windows smoke run on 2026-03-16 succeeded with `claude.exe` plus the npm-installed `gemini.cmd` shim, but the generated evidence classified Gemini usefulness as `generic_fallback` and held the release decision for review.
+- the earlier local Codex-run Gemini timeout from 2026-03-13 remains historical evidence, but it is no longer the latest smoke baseline after the clean 2026-03-16 rerun.
+- generated smoke release evidence now records concise launcher provenance facts instead of embedding full prompt payloads in the launcher summary fields.
 - The next planned MCP surface after Sprint 11 closeout is a read-only workspace-scoped file-reading tool; prefer `parleySessionId`-anchored workspace containment, text-only reads, and explicit truncation metadata instead of arbitrary absolute filesystem access.
 - `docs/codex-desktop-acceptance.md` is the current repeatable operator checklist for Codex Desktop registration and baseline tool-flow verification.
 - `docs/release-evidence-template.md` is the current default note shape for keeping smoke, acceptance, support-boundary, and usefulness evidence aligned.

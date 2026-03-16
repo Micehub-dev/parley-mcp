@@ -11,7 +11,7 @@
 - Supported transport: stdio MCP only
 - Minimum runtime: Node.js 22+
 - Current automated coverage: GitHub Actions `ubuntu-latest` plus `windows-latest` lint, typecheck, test, and build plus fixture-backed service, adapter, and stdio MCP flows
-- Current real-environment coverage: Windows local smoke through `npm run smoke:real` and a Windows Codex Desktop acceptance pass
+- Current real-environment coverage: Windows local smoke through `npm run smoke:real` with the latest documented run on 2026-03-16, plus a Windows Codex Desktop acceptance pass
 - Current Codex Desktop checklist: `docs/codex-desktop-acceptance.md`
 - Current macOS position: unverified; keep release notes explicitly narrow until an actual macOS environment is exercised
 - Current CLI caveat: on Windows, prefer the npm-installed `gemini.cmd` shim; use `PARLEY_GEMINI_COMMAND=powershell.exe` plus `PARLEY_GEMINI_ARGS_JSON` only when `gemini.ps1` is the only workable launcher
@@ -42,6 +42,7 @@
 - If a timeout or launcher failure occurs during smoke, rerun with `PARLEY_SMOKE_KEEP_TEMP=1` so the persisted diagnostics remain available for inspection.
 - Record the participant launcher path actually used, the OS, the smoke date, and whether Gemini output was merely contract-valid or materially useful for operator review.
 - Prefer the generated `releaseEvidence` or `releaseEvidenceMarkdown` payload from smoke instead of manually reconstructing the note.
+- Expect the generated launcher fields to be concise provenance summaries rather than full prompt payload dumps.
 - If `PARLEY_SMOKE_EVIDENCE_DIR` was set, attach the emitted `.json` and `.md` artifacts to the active release-evidence record.
 - If release review includes Codex Desktop support claims, run the checklist in `docs/codex-desktop-acceptance.md` alongside the smoke check.
 

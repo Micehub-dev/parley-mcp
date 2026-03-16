@@ -41,6 +41,7 @@ $env:PARLEY_SMOKE_EVIDENCE_DIR="E:\\path\\to\\release-evidence"
 - Failure path: the script prints `ok: false`, the temporary `smokeRoot`, and the diagnostics directory so operators can inspect the persisted artifacts.
 
 When `PARLEY_SMOKE_EVIDENCE_DIR` is set, the script also writes reusable `.json` and `.md` release-evidence artifacts that map directly onto `docs/release-evidence-template.md`.
+The generated launcher fields now preserve concise provenance facts such as wrapper path, model, output format, and resume usage without embedding the full prompt payload.
 
 ## Guardrail Overrides
 
@@ -52,17 +53,18 @@ Use these only when the release runbook explicitly calls for a different product
 
 ## Latest Observed Result
 
-Most recent documented clean pass on 2026-03-13 in a Windows local environment:
+Latest documented run on 2026-03-16 in a Windows local environment:
 
 - `claude.exe` resolved directly from `PATH`
 - PowerShell surfaced `gemini.ps1`, but Parley resolved Gemini through the npm-installed `gemini.cmd` shim under `%APPDATA%\\npm`
 - `npm run smoke:real` completed successfully with `ok: true`, one committed turn, a finish-time `conclusion`, launcher metadata, and a `geminiUsefulness` field
-- the default release-oriented smoke topic produced a materially useful Gemini response after prompt hardening
+- the generated evidence classified Gemini usefulness as `generic_fallback` and set `releaseDecision` to `hold until Gemini usefulness is reviewed`
+- generated release evidence recorded concise launcher facts instead of full prompt text in the launcher summary fields
 
-Latest local rerun note on 2026-03-13:
+Historical note from 2026-03-13:
 
 - a Codex-run Sprint 11 verification attempt timed out in Gemini after about 130 seconds and returned `participant_failure` with `guardrail: "timeout"`
-- treat that timeout as a workstation or operator-environment caveat until a clean rerun is recorded for release signoff
+- treat that timeout as a workstation or operator-environment caveat rather than the current baseline now that the 2026-03-16 rerun is recorded cleanly
 - preserve artifacts with `PARLEY_SMOKE_KEEP_TEMP=1` when investigating similar failures
 
 Linux note:

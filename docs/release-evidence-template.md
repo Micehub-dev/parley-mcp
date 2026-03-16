@@ -3,6 +3,7 @@
 Use this note for each release candidate or production-readiness review so smoke, acceptance, and support-boundary facts stay in one place.
 
 `npm run smoke:real` now emits `releaseEvidence` and `releaseEvidenceMarkdown`, and writes matching `.json` plus `.md` files when `PARLEY_SMOKE_EVIDENCE_DIR` is set. Use the generated payload as the default starting point for this note.
+The generated launcher fields should stay concise and provenance-focused rather than embedding full participant prompts.
 
 ## Header
 
