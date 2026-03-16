@@ -225,7 +225,7 @@ test("gemini adapter extracts bolded proposed next steps from markdown-like pros
     ]);
     assert.equal(
       result.output.proposed_next_step,
-      "Implement a cross-platform CI pipeline (e.g., via GitHub Actions) that runs on both `ubuntu-latest` and `windows-latest`."
+      "Implement a cross-platform CI pipeline (e.g., via GitHub Actions) that runs on both ubuntu-latest and windows-latest."
     );
   }
 });
