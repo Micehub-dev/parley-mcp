@@ -435,6 +435,38 @@ Exit bar:
 - Gemini remains contract-valid and is more often materially useful in real smoke
 - packaging direction stays downstream of the stronger automation and evidence bar
 
+### Sprint 12: Evidence Alignment and Release Signal Hardening
+
+Window: 2026-05-22 to 2026-06-04
+
+Goal:
+
+- align the production-readiness evidence set to the latest exercised facts
+- tighten the Gemini usefulness gate so low-value smoke passes fail honestly
+- simplify generated release artifacts before any new MCP surface area resumes
+
+Status:
+
+- Planned as of 2026-03-16
+
+Planned scope:
+
+- clean up smoke, matrix, sprint, and release docs around the latest exercised evidence
+- harden usefulness scoring and smoke-time release decisions for Gemini
+- simplify generated release evidence so it is concise and directly reviewable
+- keep the workspace-scoped file-reading tool explicitly downstream of this sprint
+
+Detailed scope:
+
+- See `docs/sprints/2026-sprint-12.md`
+
+Exit bar:
+
+- the latest smoke and release docs no longer rely on stale evidence ordering
+- Gemini generic fallback responses do not clear the release-usefulness bar
+- generated release artifacts are concise enough to attach directly to review
+- feature expansion remains downstream of the production-readiness cleanup pass
+
 ## 7. Epic View
 
 ### Epic 1. Core Orchestration
@@ -508,10 +540,11 @@ Done when:
 
 ### Work That Should Happen Now
 
-- add a read-only workspace-scoped file-reading MCP tool so orchestrators can pass absolute or workspace-relative file context through Parley without opening arbitrary filesystem access
+- align smoke, acceptance, matrix, sprint, and support-boundary docs to the latest exercised evidence before widening scope
+- tighten Gemini operator usefulness gating in smoke and release review without widening the shared participant contract
+- simplify generated release evidence so it is concise and directly attachable during release review
+- add a read-only workspace-scoped file-reading MCP tool so orchestrators can pass absolute or workspace-relative file context through Parley without opening arbitrary filesystem access after the production-readiness cleanup pass closes
 - keep Windows automation parity green so the Windows-first real-operator path is not guarded only by manual smoke
-- reduce manual release-review work by using generated release evidence directly from the smoke workflow
-- improve Gemini operator usefulness in real smoke without widening the shared participant contract
 - keep the Codex Desktop acceptance checklist, real-CLI smoke path, support-boundary wording, and release evidence docs aligned with runtime reality
 - preserve the current narrow macOS wording until an actual macOS environment is exercised
 
@@ -573,12 +606,12 @@ Mitigation:
 
 ### Next Implementation Priority
 
-1. Add a read-only workspace-scoped file-reading MCP tool that accepts an absolute or workspace-relative path but enforces `session.workspaceRoot` containment, text-only reads, and predictable truncation metadata.
-2. Confirm the new Windows automation lane on a remote GitHub Actions run so the Windows-first real-operator path is covered by CI as well as manual smoke.
-3. Use generated release evidence directly from the smoke workflow so maintainers do not manually reconstruct launcher, environment, and usefulness facts during release review.
-4. Keep Gemini operator usefulness reviewable through smoke-time classification, plain-text next-step recovery, and regression coverage while preserving the shared participant contract.
-5. Expand real-CLI and OS verification beyond the current Windows-first statement only when additional environments are actually exercised.
-6. Treat Linux and macOS verification as separate evidence tracks; CI is acceptable Linux automation evidence, but do not claim macOS stability without an actual macOS run.
-7. Keep the Codex Desktop acceptance path, smoke evidence, test matrix, release-evidence template, and runbook aligned whenever release or installation behavior changes.
-8. Revisit packaging direction only after the Sprint 11 production-use evidence bar stays stable.
-9. Consider stronger access policy options only if diagnostics move beyond local operator use or the new file-reading surface needs additional policy controls.
+1. Clean up the production-readiness evidence set so smoke, sprint, matrix, release, and support-boundary docs all reflect the latest exercised facts in one consistent order.
+2. Tighten the Gemini usefulness gate so generic filler plus the default next step no longer passes release smoke as materially useful.
+3. Simplify generated release evidence so launcher provenance remains clear without embedding oversized prompt payloads in human-facing review artifacts.
+4. Add a read-only workspace-scoped file-reading MCP tool that accepts an absolute or workspace-relative path but enforces `session.workspaceRoot` containment, text-only reads, and predictable truncation metadata after the production-readiness cleanup pass closes.
+5. Confirm the new Windows automation lane on a remote GitHub Actions run so the Windows-first real-operator path is covered by CI as well as manual smoke.
+6. Expand real-CLI and OS verification beyond the current Windows-first statement only when additional environments are actually exercised.
+7. Treat Linux and macOS verification as separate evidence tracks; CI is acceptable Linux automation evidence, but do not claim macOS stability without an actual macOS run.
+8. Keep the Codex Desktop acceptance path, smoke evidence, test matrix, release-evidence template, and runbook aligned whenever release or installation behavior changes.
+9. Revisit packaging direction only after the production-use evidence bar stays stable through Sprint 12 closeout.

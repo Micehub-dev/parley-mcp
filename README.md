@@ -150,7 +150,7 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 - macOS remains unverified; keep support wording narrow until an actual macOS environment is exercised
 - `npm run smoke:real` now defaults to a release-oriented production-readiness prompt and records `participantLaunches`, `geminiUsefulness`, `releaseEvidence`, and `releaseEvidenceMarkdown` in its output
 - Set `PARLEY_SMOKE_EVIDENCE_DIR` to write reusable release-evidence `.json` and `.md` artifacts directly from the smoke workflow
-- Current next-step focus is to add a read-only workspace-scoped file-reading MCP tool, keep the Windows and Linux CI matrix green, rerun Windows real smoke whenever launcher or authentication behavior changes, and add exercised Linux evidence only when a real Linux participant environment is available
+- Current next-step focus is to align the latest production-readiness evidence across smoke and release docs, tighten the Gemini usefulness gate in real smoke, simplify generated release artifacts, and keep the workspace-scoped file-reading MCP tool downstream of that cleanup pass
 - Default participant guardrails:
   - `PARLEY_PARTICIPANT_TIMEOUT_MS=120000`
   - `PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES=1000000`
@@ -168,19 +168,21 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 - `docs/real-cli-smoke.md`: release-oriented real CLI smoke workflow and latest observed result
 - `docs/release-evidence-template.md`: repeatable note template for smoke, acceptance, and support-boundary evidence
 - `docs/release-checklist.md`: release runbook for preflight, rollout, rollback, and post-release review
-- `docs/sprints/2026-sprint-11.md`: current production-readiness sprint focused on Windows verification parity, release-evidence automation, and tighter Gemini usefulness
+- `docs/sprints/2026-sprint-11.md`: current Windows verification parity and release-automation sprint
+- `docs/sprints/2026-sprint-12.md`: planned follow-on production-readiness sprint for evidence cleanup, usefulness gate tightening, and release artifact simplification
 - `multi-cli-parley-architecture.md`: architecture rationale and long-form design
 
 ## Roadmap
 
-- Add a read-only workspace-scoped file-reading MCP tool so orchestrators can safely share workspace file context through Parley without granting arbitrary filesystem access
+- Align smoke, acceptance, matrix, and release docs to the latest exercised production-readiness evidence
+- Tighten Gemini usefulness gating in real smoke without widening the shared participant contract
+- Simplify generated release-evidence artifacts so they are concise and directly reviewable
+- Add a read-only workspace-scoped file-reading MCP tool so orchestrators can safely share workspace file context through Parley without granting arbitrary filesystem access after the current production-readiness cleanup pass closes
 - Keep the Windows and Linux CI matrix green for the current release-validation bar
-- Use generated release-evidence artifacts directly from the smoke workflow during release review
-- Revalidate Gemini operator usefulness in real smoke without widening the shared participant contract
 - Add a real Linux CLI evidence path only when an actual Linux participant environment is available
 - Keep smoke, Codex Desktop acceptance, test matrix, and release docs aligned as one release-evidence workflow
 - Validate macOS only from an exercised macOS environment; keep the support statement narrow until then
-- Package thin surfaces for plugins, extensions, and future UI layers only after the stronger Sprint 11 production-use evidence bar remains stable
+- Package thin surfaces for plugins, extensions, and future UI layers only after the stronger Sprint 12 production-use evidence bar remains stable
 
 ## Use Cases
 
