@@ -17,6 +17,8 @@ export interface ParticipantResponseUsefulnessAssessment {
   reasons: string[];
 }
 
+const DEFAULT_NEXT_STEP = "Continue the parley with the next participant response.";
+
 export function createParticipantAdapters(
   executor: CommandExecutor = new SpawnCommandExecutor()
 ): ParticipantAdapterRegistry {
@@ -237,10 +239,14 @@ export function buildParticipantPrompt(
     "- If context is limited, ask one concrete topic question instead of giving a generic fallback.",
     "- Provide at least one useful argument or one concrete question when the topic gives enough context.",
     "- Avoid generic filler such as 'I am ready to participate' or 'Here is a structured response'.",
+    "- Never say you acknowledge the session, your role, or your readiness to help.",
     "- Do not ask for the objective, task, or workspace context. The topic above is already the task.",
+    "- Do not ask the orchestrator to provide a first directive, inquiry, or next task.",
     "- Do not say you are ready to participate; contribute one concrete point about the topic instead.",
     "- Do not use a generic next step; name a specific document, check, decision, or follow-up action.",
     "- Always provide a short proposed_next_step string that is specific to the topic or current disagreement.",
+    "- If another participant has already responded, directly challenge, refine, or extend one concrete claim from that response.",
+    "- If you cannot add a new argument, ask one concrete question about a named risk, document, environment, or decision from the topic or prior response.",
     "",
     "Session context:",
     `- session_id: ${input.session.sessionId}`,
@@ -300,7 +306,7 @@ export function assessParticipantResponseUsefulness(
 
   const classification =
     reasons.includes("generic_summary") ||
-    (reasons.includes("default_next_step") && reasons.includes("no_supporting_detail")) ||
+    reasons.includes("default_next_step") ||
     (reasons.includes("missing_topic_terms") && reasons.includes("no_supporting_detail"))
       ? "generic_fallback"
       : "material";
@@ -318,7 +324,7 @@ function parseParticipantResponse(value: unknown): ParticipantResponse {
 
 function parseGeminiParticipantResponse(value: unknown): ParticipantResponse {
   try {
-    return parseParticipantResponse(value);
+    return finalizeGeminiParticipantResponse(parseParticipantResponse(value));
   } catch {
     const normalized = normalizeGeminiParticipantResponse(value);
     return participantResponseSchema.parse(normalized);
@@ -349,7 +355,7 @@ function normalizeGeminiParticipantResponse(value: unknown): ParticipantResponse
       summary,
       arguments: [],
       questions: [],
-      proposed_next_step: "Continue the parley with the next participant response."
+      proposed_next_step: DEFAULT_NEXT_STEP
     };
   }
 
@@ -384,13 +390,13 @@ function normalizeGeminiParticipantResponse(value: unknown): ParticipantResponse
       "recommended_next_step"
     ]);
 
-    return {
+    return finalizeGeminiParticipantResponse({
       stance: normalizeParticipantStance(getFirstText(record, ["stance", "position", "opinion"])),
       summary: plainTextResponse.summary,
       arguments: argumentsFromRecord.length > 0 ? argumentsFromRecord : plainTextResponse.arguments,
       questions: questionsFromRecord.length > 0 ? questionsFromRecord : plainTextResponse.questions,
       proposed_next_step: nextStepFromRecord ?? plainTextResponse.proposed_next_step
-    };
+    });
   }
 
   const summary = normalizeGeminiSummaryText(
@@ -407,7 +413,7 @@ function normalizeGeminiParticipantResponse(value: unknown): ParticipantResponse
     throw new Error("Gemini response did not include a usable summary.");
   }
 
-  return {
+  return finalizeGeminiParticipantResponse({
     stance: normalizeParticipantStance(getFirstText(record, ["stance", "position", "opinion"])),
     summary,
     arguments: normalizeStringArray(
@@ -424,8 +430,8 @@ function normalizeGeminiParticipantResponse(value: unknown): ParticipantResponse
         "nextStep",
         "recommended_next_step"
       ]) ??
-      "Continue the parley with the next participant response."
-  };
+      DEFAULT_NEXT_STEP
+  });
 }
 
 function normalizeGeminiResponseValue(value: unknown): unknown {
@@ -584,8 +590,7 @@ function parseGeminiLabeledTextResponse(value: string): ParticipantResponse | nu
     arguments: normalizeStringArray(sections.arguments),
     questions: normalizeStringArray(sections.questions),
     proposed_next_step:
-      sections.proposed_next_step.join(" ").trim() ||
-      "Continue the parley with the next participant response."
+      sections.proposed_next_step.join(" ").trim() || DEFAULT_NEXT_STEP
   };
 }
 
@@ -633,8 +638,48 @@ function parseGeminiPlainTextResponse(value: string): ParticipantResponse | null
     proposed_next_step:
       nextStepSource !== undefined
         ? stripNextStepLeadIn(nextStepSource)
-        : "Continue the parley with the next participant response."
+        : DEFAULT_NEXT_STEP
   };
+}
+
+function finalizeGeminiParticipantResponse(response: ParticipantResponse): ParticipantResponse {
+  if (response.proposed_next_step !== DEFAULT_NEXT_STEP) {
+    return response;
+  }
+
+  const inferredNextStep = inferGeminiNextStepFromResponse(response);
+  if (!inferredNextStep) {
+    return response;
+  }
+
+  return {
+    ...response,
+    proposed_next_step: inferredNextStep
+  };
+}
+
+function inferGeminiNextStepFromResponse(response: ParticipantResponse): string | undefined {
+  for (const candidate of [response.summary, ...response.arguments, ...response.questions]) {
+    const normalizedCandidate = normalizeGeminiActionText(candidate);
+    if (!normalizedCandidate) {
+      continue;
+    }
+
+    if (isExplicitNextStepSentence(normalizedCandidate)) {
+      return stripNextStepLeadIn(normalizedCandidate);
+    }
+
+    const labeledMatch =
+      /(?:^| )(?:(?:proposed|recommended) next step|next step|action item|follow[- ]?up)\s*:?\s*(.+)$/iu.exec(
+        normalizedCandidate
+      );
+    const labeledValue = labeledMatch?.[1]?.trim();
+    if (labeledValue) {
+      return stripNextStepLeadIn(labeledValue);
+    }
+  }
+
+  return undefined;
 }
 
 function mapGeminiTextSection(value: string):
@@ -700,10 +745,21 @@ function isLikelyActionSentence(value: string): boolean {
 }
 
 function stripNextStepLeadIn(value: string): string {
-  return value
+  return normalizeGeminiActionText(
+    value
     .replace(/^(?:next step|recommended next step|action item|follow[- ]?up):\s*/iu, "")
     .replace(/^(?:a )?next step is to\s+/iu, "")
     .replace(/^(?:recommend|recommended|recommendation):\s*/iu, "")
+    .trim()
+  );
+}
+
+function normalizeGeminiActionText(value: string): string {
+  return value
+    .replace(/^#+\s*/u, "")
+    .replace(/\*\*/gu, "")
+    .replace(/`/gu, "")
+    .replace(/\s+/gu, " ")
     .trim();
 }
 
@@ -801,8 +857,11 @@ function isGenericFallbackSummary(value: string): boolean {
 
   return [
     /ready to participate/u,
+    /acknowledge that i am a participant/u,
     /happy to help/u,
     /can help with/u,
+    /ready to assist/u,
+    /please provide (?:your )?(?:first )?(?:directive|inquiry|task)/u,
     /parley multi-llm session/u,
     /structured (?:thought|response)/u,
     /here(?:'s| is) (?:a|my|the) /u,

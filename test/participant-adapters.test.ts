@@ -280,6 +280,61 @@ test("gemini adapter normalizes partial JSON shapes with alternate keys and stri
   }
 });
 
+test("gemini adapter infers a next step from argument text when Gemini leaves the default fallback", async () => {
+  const executor = new FakeCommandExecutor({
+    stdout: JSON.stringify({
+      response: {
+        summary:
+          "A primary production-readiness risk in a Windows-first release posture is path and filesystem incompatibility.",
+        arguments: [
+          "Windows is case-insensitive while most production environments run Linux and stay case-sensitive.",
+          "### Proposed Next Step **Implement a cross-platform path abstraction layer and mandate Linux-based CI validation.**"
+        ]
+      }
+    })
+  });
+  const adapters = createParticipantAdapters(executor);
+
+  const result = await adapters.gemini.run(buildAdapterInput());
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(
+      result.output.proposed_next_step,
+      "Implement a cross-platform path abstraction layer and mandate Linux-based CI validation."
+    );
+  }
+});
+
+test("gemini adapter repairs a valid JSON response when the next step is embedded in the arguments", async () => {
+  const executor = new FakeCommandExecutor({
+    stdout: JSON.stringify({
+      response: JSON.stringify({
+        stance: "undecided",
+        summary:
+          "A concrete production-readiness risk is inconsistent file path normalization across Windows and Linux.",
+        arguments: [
+          "Windows paths and POSIX paths can diverge during session persistence.",
+          "### Proposed Next Step Implement a platform-agnostic path normalization layer and validate it in Linux CI."
+        ],
+        questions: [],
+        proposed_next_step: "Continue the parley with the next participant response."
+      })
+    })
+  });
+  const adapters = createParticipantAdapters(executor);
+
+  const result = await adapters.gemini.run(buildAdapterInput());
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(
+      result.output.proposed_next_step,
+      "Implement a platform-agnostic path normalization layer and validate it in Linux CI."
+    );
+  }
+});
+
 test("gemini adapter extracts labeled plain-text sections into the shared participant shape", async () => {
   const executor = new FakeCommandExecutor({
     stdout: JSON.stringify({
@@ -327,9 +382,12 @@ test("participant prompt includes the Sprint 10 usefulness bar", () => {
   assert.match(prompt, /ask one concrete topic question/i);
   assert.match(prompt, /Provide at least one useful argument or one concrete question/i);
   assert.match(prompt, /Avoid generic filler/i);
+  assert.match(prompt, /Never say you acknowledge the session/i);
   assert.match(prompt, /Do not ask for the objective/i);
+  assert.match(prompt, /Do not ask the orchestrator to provide a first directive/i);
   assert.match(prompt, /Do not say you are ready to participate/i);
   assert.match(prompt, /Do not use a generic next step/i);
+  assert.match(prompt, /directly challenge, refine, or extend one concrete claim/i);
 });
 
 test("usefulness assessment flags generic fallback Gemini responses", () => {
@@ -383,6 +441,41 @@ test("usefulness assessment treats thin topical responses with the default next 
 
   assert.equal(assessment.classification, "generic_fallback");
   assert.deepEqual(assessment.reasons, ["default_next_step", "no_supporting_detail"]);
+});
+
+test("usefulness assessment rejects default next steps even when a supporting detail exists", () => {
+  const assessment = assessParticipantResponseUsefulness(
+    {
+      stance: "refine",
+      summary: "Windows smoke should keep the release evidence aligned to the latest run.",
+      arguments: ["The current evidence set still mixes the 2026-03-13 timeout note into the baseline."],
+      questions: [],
+      proposed_next_step: "Continue the parley with the next participant response."
+    },
+    "Align the release evidence set to the latest Windows smoke baseline."
+  );
+
+  assert.equal(assessment.classification, "generic_fallback");
+  assert.deepEqual(assessment.reasons, ["default_next_step"]);
+});
+
+test("usefulness assessment rejects the latest observed self-referential Gemini smoke fallback", () => {
+  const assessment = assessParticipantResponseUsefulness(
+    {
+      stance: "undecided",
+      summary: "I acknowledge that I am a participant in this Parley multi-LLM session.",
+      arguments: [
+        "I am ready to assist with software engineering tasks, codebase analysis, or any other technical challenges within this workspace.",
+        "Please provide your first directive or inquiry to begin."
+      ],
+      questions: [],
+      proposed_next_step: "Continue the parley with the next participant response."
+    },
+    "Name one concrete production-readiness risk in Parley's current Windows-first release posture, explain why it matters, and propose one next step."
+  );
+
+  assert.equal(assessment.classification, "generic_fallback");
+  assert.deepEqual(assessment.reasons, ["generic_summary", "default_next_step"]);
 });
 
 test("adapter normalizes launcher override parse errors into process_error results", async () => {

@@ -11,6 +11,7 @@ import { SpawnCommandExecutor } from "../dist/participants/runtime.js";
 import {
   buildReleaseEvidenceRecord,
   formatReleaseEvidenceMarkdown,
+  summarizeLauncher,
   writeReleaseEvidenceArtifacts
 } from "../dist/smoke/release-evidence.js";
 import { ParleyService } from "../dist/services/parley-service.js";
@@ -86,7 +87,7 @@ try {
     orchestratorRunId: "real-cli-smoke",
     speakerOrder,
     userNudge:
-      "Keep the response brief, concrete, and topic-specific. Do not ask for more context."
+      "Keep the response brief, concrete, and topic-specific. Do not ask for more context. Do not use the default next step string 'Continue the parley with the next participant response.' If you cannot name a concrete action, ask one concrete topic question instead."
   });
   const finished = await service.finishSession(started.parleySessionId, "real-cli-smoke");
   const geminiUsefulness = assessParticipantResponseUsefulness(stepped.responses.gemini, smokeTopic);
@@ -104,9 +105,9 @@ try {
     releaseCandidateLabel: process.env.PARLEY_SMOKE_RELEASE_LABEL,
     windowsRealEnvironmentEvidence:
       process.platform === "win32"
-        ? `Windows local real-CLI smoke passed on ${new Date().toISOString().slice(0, 10)} using ${formatLauncher(
+        ? `Windows local real-CLI smoke passed on ${new Date().toISOString().slice(0, 10)} using ${summarizeLauncher(
             claudeLaunch
-          )} and ${formatLauncher(geminiLaunch)}.`
+          )} and ${summarizeLauncher(geminiLaunch)}.`
         : "No Windows real-environment fact was recorded by this smoke run.",
     linuxEvidence:
       process.platform === "linux"
@@ -123,8 +124,8 @@ try {
       os: process.platform,
       nodeVersion: process.version,
       smokeDate: new Date().toISOString().slice(0, 10),
-      claudeLauncher: formatLauncher(claudeLaunch),
-      geminiLauncher: formatLauncher(geminiLaunch),
+      claudeLauncher: summarizeLauncher(claudeLaunch),
+      geminiLauncher: summarizeLauncher(geminiLaunch),
       result: "passed",
       geminiUsefulnessClassification: geminiUsefulness.classification,
       geminiUsefulnessReasons: geminiUsefulness.reasons,
@@ -278,14 +279,6 @@ async function maybeWriteReleaseEvidenceArtifacts(releaseEvidence) {
 
   const baseName = `release-evidence-${new Date().toISOString().replace(/[:.]/g, "-")}`;
   return writeReleaseEvidenceArtifacts(outputDir, baseName, releaseEvidence);
-}
-
-function formatLauncher(launch) {
-  if (!launch) {
-    return "not recorded";
-  }
-
-  return [launch.command, ...launch.args].join(" ").trim();
 }
 
 function buildSmokeCaveats(geminiUsefulness, geminiLaunch) {

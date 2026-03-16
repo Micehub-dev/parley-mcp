@@ -47,6 +47,11 @@ export interface ReleaseEvidenceRecord {
   };
 }
 
+export interface LauncherSummaryInput {
+  command: string;
+  args: string[];
+}
+
 export interface BuildReleaseEvidenceInput {
   reviewDate: string;
   commit?: string;
@@ -223,4 +228,89 @@ export async function writeReleaseEvidenceArtifacts(
 function joinEvidenceLines(values: string[], fallback = "not recorded"): string {
   const cleaned = values.map((value) => value.trim()).filter((value) => value.length > 0);
   return cleaned.length > 0 ? cleaned.join(" | ") : fallback;
+}
+
+export function summarizeLauncher(input: LauncherSummaryInput | null | undefined): string {
+  if (!input) {
+    return "not recorded";
+  }
+
+  const directLaunch = unwrapLauncher(input.command, input.args);
+  const facts = buildLauncherFacts(directLaunch.args);
+  const factSuffix = facts.length > 0 ? ` [${facts.join(", ")}]` : "";
+
+  if (directLaunch.via) {
+    return `${directLaunch.via} -> ${directLaunch.command}${factSuffix}`;
+  }
+
+  return `${directLaunch.command}${factSuffix}`;
+}
+
+function unwrapLauncher(command: string, args: string[]): {
+  via?: string;
+  command: string;
+  args: string[];
+} {
+  const normalizedCommand = command.toLowerCase();
+
+  if (normalizedCommand.endsWith("cmd.exe") && args.length >= 4 && args[2] === "/c") {
+    return {
+      via: command,
+      command: args[3] ?? "not recorded",
+      args: args.slice(4)
+    };
+  }
+
+  const powerShellFileIndex = args.findIndex((value) => value.toLowerCase() === "-file");
+  if (normalizedCommand.includes("powershell") && powerShellFileIndex >= 0) {
+    return {
+      via: command,
+      command: args[powerShellFileIndex + 1] ?? "not recorded",
+      args: args.slice(powerShellFileIndex + 2)
+    };
+  }
+
+  return {
+    command,
+    args
+  };
+}
+
+function buildLauncherFacts(args: string[]): string[] {
+  const facts: string[] = [];
+  const outputFormat = findFlagValue(args, "--output-format");
+  const model = findFlagValue(args, "--model");
+  const resumeRequested = args.includes("--resume");
+
+  if (outputFormat) {
+    facts.push(`output=${outputFormat}`);
+  }
+
+  if (model) {
+    facts.push(`model=${model}`);
+  }
+
+  if (args.includes("--json-schema")) {
+    facts.push("schema=inline");
+  }
+
+  if (resumeRequested) {
+    facts.push("resume=true");
+  }
+
+  if (args.includes("-p")) {
+    facts.push("prompt=inline");
+  }
+
+  return facts;
+}
+
+function findFlagValue(args: string[], flag: string): string | undefined {
+  const index = args.indexOf(flag);
+  if (index < 0) {
+    return undefined;
+  }
+
+  const value = args[index + 1];
+  return value && !value.startsWith("-") ? value : undefined;
 }

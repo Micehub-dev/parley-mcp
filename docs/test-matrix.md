@@ -8,7 +8,7 @@
 - Real-environment confidence today: Windows local smoke via `npm run smoke:real` plus a Windows Codex Desktop acceptance pass
 - Linux is currently backed by automated CI evidence rather than a Linux real-CLI smoke
 - macOS remains unverified in this repository
-- Sprint 11 focus: keep the new Windows and Linux automation lanes aligned, generate reusable smoke evidence, and improve Gemini usefulness in real smoke without widening the contract
+- Sprint 12 focus: keep the latest smoke and release evidence aligned, fail low-value Gemini smoke responses honestly, and keep generated release artifacts concise without widening the contract
 
 ## Automated Coverage
 
@@ -36,7 +36,7 @@
 
 | Verification Type | Participants | OS | Transport | Workflow | Latest Result |
 | --- | --- | --- | --- | --- | --- |
-| manual smoke | Claude + Gemini CLIs | Windows | stdio / in-process service | `npm run smoke:real` | Most recent documented clean pass: 2026-03-13 using `claude.exe` plus the npm-installed `gemini.cmd` shim. A later Codex-run rerun on 2026-03-13 timed out in Gemini on the current workstation and should be rerun before release signoff; see `docs/real-cli-smoke.md` |
+| manual smoke | Claude + Gemini CLIs | Windows | stdio / in-process service | `npm run smoke:real` | Latest documented run: 2026-03-16 using `claude.exe` plus the npm-installed `gemini.cmd` shim. The smoke path completed successfully, but the generated evidence classified Gemini usefulness as `generic_fallback` and held the release decision for review. The older Codex-run timeout from 2026-03-13 remains historical evidence only; see `docs/real-cli-smoke.md` |
 | manual acceptance | Codex Desktop + Claude + Gemini CLIs | Windows | stdio MCP | register server -> discover tools -> start -> claim_lease -> step -> diagnostics -> finish | Passed on 2026-03-13; see `docs/codex-desktop-acceptance.md` |
 
 ## Notes
@@ -46,4 +46,4 @@
 - Windows operators should prefer the npm-installed `gemini.cmd` shim when it is available; use launcher overrides only when `gemini.ps1` is the only working entrypoint.
 - Linux evidence in Sprint 9 comes from exercised `ubuntu-latest` CI; local WSL on the current workstation was not promoted into release evidence because Node.js was not available there.
 - macOS should remain a design target until an actual macOS environment is exercised; checklist preparation alone does not change the support statement.
-- Sprint 11 now keeps Gemini usefulness and generated release evidence explicit in smoke output so contract validity, operator usefulness, and review artifacts remain separable.
+- Sprint 12 now keeps Gemini usefulness, concise launcher provenance, and generated release evidence explicit in smoke output so contract validity, operator usefulness, and review artifacts remain separable.

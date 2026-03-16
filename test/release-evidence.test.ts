@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   buildReleaseEvidenceRecord,
   formatReleaseEvidenceMarkdown,
+  summarizeLauncher,
   writeReleaseEvidenceArtifacts
 } from "../src/smoke/release-evidence.js";
 
@@ -37,6 +38,30 @@ test("release evidence formatter maps smoke facts onto the review template", () 
   assert.match(markdown, /- Claude launcher: claude\.exe/);
   assert.match(markdown, /- Gemini usefulness classification: material/);
   assert.match(markdown, /topic-specific next step \| supporting detail present/);
+});
+
+test("launcher summarizer keeps provenance while omitting prompt and schema payloads", () => {
+  const summary = summarizeLauncher({
+    command: "cmd.exe",
+    args: [
+      "/d",
+      "/s",
+      "/c",
+      "C:\\Users\\Micehub\\AppData\\Roaming\\npm\\gemini.cmd",
+      "-p",
+      "very long prompt that should not appear",
+      "--output-format",
+      "json",
+      "--model",
+      "auto"
+    ]
+  });
+
+  assert.equal(
+    summary,
+    "cmd.exe -> C:\\Users\\Micehub\\AppData\\Roaming\\npm\\gemini.cmd [output=json, model=auto, prompt=inline]"
+  );
+  assert.doesNotMatch(summary, /very long prompt/);
 });
 
 test("release evidence writer emits json and markdown artifacts together", async () => {
