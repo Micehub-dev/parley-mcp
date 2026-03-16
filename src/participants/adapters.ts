@@ -158,6 +158,9 @@ class GeminiParticipantAdapter extends BaseParticipantAdapter {
   protected buildCommand(input: ParticipantAdapterInput): CommandExecutionInput {
     const participantState = input.session.participants[this.kind];
     const launch = resolveParticipantLaunch(this.kind);
+    // TODO: When Gemini CLI ships stable --schema-file support (tracking
+    // google-gemini/gemini-cli#18032), pass the shared ParticipantResponse schema
+    // directly and simplify the fallback normalization/parsing path below.
     const args = [
       "-p",
       buildParticipantPrompt(this.kind, input),

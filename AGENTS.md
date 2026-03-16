@@ -101,12 +101,13 @@ npm run dev
 
 Priority order for upcoming work:
 
-1. keep the new `ubuntu-latest` and `windows-latest` automation lanes green while the Windows-first support boundary remains narrow
-2. improve Gemini operator usefulness in real smoke without widening the shared participant contract
-3. keep release evidence collection repeatable across smoke, acceptance, matrix, and runbook docs
-4. rerun Windows real smoke whenever launcher, authentication, or release-installation behavior changes
-5. packaging direction only after the Sprint 11 production-readiness bar remains stable
-6. UI or extension work only as thin wrappers over the stable MCP core
+1. add a read-only workspace-scoped file-reading MCP tool so orchestrators can share absolute-path or workspace-relative file context without arbitrary filesystem access
+2. keep the new `ubuntu-latest` and `windows-latest` automation lanes green while the Windows-first support boundary remains narrow
+3. improve Gemini operator usefulness in real smoke without widening the shared participant contract
+4. keep release evidence collection repeatable across smoke, acceptance, matrix, and runbook docs
+5. rerun Windows real smoke whenever launcher, authentication, or release-installation behavior changes
+6. packaging direction only after the Sprint 11 production-readiness bar remains stable
+7. UI or extension work only as thin wrappers over the stable MCP core
 
 Do not jump ahead to UI or packaging unless the current sprint says so.
 
@@ -155,6 +156,7 @@ Escalate before changing:
 - `npm run smoke:real` now emits `releaseEvidence` and `releaseEvidenceMarkdown`, and writes reusable `.json` plus `.md` artifacts when `PARLEY_SMOKE_EVIDENCE_DIR` is set.
 - usefulness assessment now treats thin default-next-step Gemini replies as fallback-grade even when they are still contract-valid.
 - the most recent documented clean Windows smoke pass produced a materially useful Gemini response on 2026-03-13, but a later local Codex-run rerun on the same date timed out in Gemini on this workstation and should be revalidated before release signoff.
+- The next planned MCP surface after Sprint 11 closeout is a read-only workspace-scoped file-reading tool; prefer `parleySessionId`-anchored workspace containment, text-only reads, and explicit truncation metadata instead of arbitrary absolute filesystem access.
 - `docs/codex-desktop-acceptance.md` is the current repeatable operator checklist for Codex Desktop registration and baseline tool-flow verification.
 - `docs/release-evidence-template.md` is the current default note shape for keeping smoke, acceptance, support-boundary, and usefulness evidence aligned.
 - release readiness now depends on keeping support-boundary wording, smoke evidence, Codex Desktop acceptance evidence, and release docs aligned as one reviewable set.
