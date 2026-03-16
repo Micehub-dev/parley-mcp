@@ -59,7 +59,7 @@ flowchart LR
 
 ## Current Status
 
-The repository is currently at the **Windows-first production-readiness hardening** stage.
+The repository is currently at the **Sprint 12 evidence-alignment and release-signal hardening** stage.
 
 - MCP server skeleton and core session lifecycle are implemented
 - Filesystem-backed storage is implemented
@@ -80,14 +80,16 @@ The repository is currently at the **Windows-first production-readiness hardenin
 - Failed participant attempts persist debug-friendly diagnostics under `.multi-llm/sessions/<sessionId>/diagnostics/`
 - Service and adapter tests cover happy-path execution, retrieval, diagnostics, and key failure modes
 - Stdio MCP integration coverage now exercises `start -> claim_lease -> step -> finish -> promote -> search -> board`, resume reuse, and lease-conflict scenarios
-- the most recent documented clean Windows smoke pass used `claude.exe` together with the npm-installed `gemini.cmd` shim
+- the latest documented Windows smoke run on 2026-03-16 completed successfully using `claude.exe` together with the npm-installed `gemini.cmd` shim, but the generated evidence classified Gemini usefulness as `generic_fallback` and set the release decision to hold pending review
+- the earlier Codex-run Gemini timeout from 2026-03-13 remains recorded as historical evidence rather than the current smoke baseline
 - a live Codex Desktop installation and MCP usage pass has now verified server registration, lease flow, step execution, diagnostics inspection, and real participant execution on Windows
 - GitHub Actions CI is now configured as an `ubuntu-latest` plus `windows-latest` matrix for lint, typecheck, test, and build
 - Gemini normalization now recovers common markdown-fenced JSON, labeled plain-text, and partial JSON response shapes without widening the shared contract
-- Gemini usefulness hardening now adds stronger anti-fallback prompting, plain-text next-step inference, stricter fallback classification, and targeted regression coverage without widening the shared contract
+- Gemini usefulness hardening now adds stronger anti-fallback prompting, plain-text next-step inference, stricter default-next-step fallback classification, and targeted regression coverage without widening the shared contract
 - `npm run smoke:real` now emits `releaseEvidence` and `releaseEvidenceMarkdown`, and can write reusable JSON and Markdown artifacts when `PARLEY_SMOKE_EVIDENCE_DIR` is set
+- generated release evidence now summarizes concise launcher provenance facts instead of embedding full prompt payloads in the human-facing launcher fields
 - CI is configured for install, lint, test, typecheck, and build on both Linux and Windows runners
-- Sprint 11 implementation now centers on keeping the new automation lane, generated release evidence, and Gemini usefulness review stable while real smoke is revalidated honestly
+- Sprint 12 implementation now centers on aligning smoke and release docs to the latest exercised evidence, failing low-value Gemini smoke responses honestly, and keeping generated release artifacts concise enough for direct review attachment
 
 ## Repository Layout
 
@@ -150,7 +152,7 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 - macOS remains unverified; keep support wording narrow until an actual macOS environment is exercised
 - `npm run smoke:real` now defaults to a release-oriented production-readiness prompt and records `participantLaunches`, `geminiUsefulness`, `releaseEvidence`, and `releaseEvidenceMarkdown` in its output
 - Set `PARLEY_SMOKE_EVIDENCE_DIR` to write reusable release-evidence `.json` and `.md` artifacts directly from the smoke workflow
-- Current next-step focus is to align the latest production-readiness evidence across smoke and release docs, tighten the Gemini usefulness gate in real smoke, simplify generated release artifacts, and keep the workspace-scoped file-reading MCP tool downstream of that cleanup pass
+- Current next-step focus is to keep the latest production-readiness evidence aligned across smoke, sprint, matrix, and release docs, tighten the Gemini usefulness gate in real smoke, simplify generated release artifacts, and keep the workspace-scoped file-reading MCP tool downstream of that cleanup pass
 - Default participant guardrails:
   - `PARLEY_PARTICIPANT_TIMEOUT_MS=120000`
   - `PARLEY_PARTICIPANT_MAX_OUTPUT_BYTES=1000000`
@@ -168,14 +170,14 @@ Parley stores local project data under `.multi-llm/`, including workspace metada
 - `docs/real-cli-smoke.md`: release-oriented real CLI smoke workflow and latest observed result
 - `docs/release-evidence-template.md`: repeatable note template for smoke, acceptance, and support-boundary evidence
 - `docs/release-checklist.md`: release runbook for preflight, rollout, rollback, and post-release review
-- `docs/sprints/2026-sprint-11.md`: current Windows verification parity and release-automation sprint
-- `docs/sprints/2026-sprint-12.md`: planned follow-on production-readiness sprint for evidence cleanup, usefulness gate tightening, and release artifact simplification
+- `docs/sprints/2026-sprint-11.md`: completed Windows verification parity and release-automation sprint
+- `docs/sprints/2026-sprint-12.md`: current production-readiness sprint for evidence cleanup, usefulness gate tightening, and release artifact simplification
 - `multi-cli-parley-architecture.md`: architecture rationale and long-form design
 
 ## Roadmap
 
-- Align smoke, acceptance, matrix, and release docs to the latest exercised production-readiness evidence
-- Tighten Gemini usefulness gating in real smoke without widening the shared participant contract
+- Align smoke, acceptance, matrix, sprint, and release docs to the latest exercised production-readiness evidence
+- Tighten Gemini usefulness gating in real smoke so the default next step no longer clears release review by itself
 - Simplify generated release-evidence artifacts so they are concise and directly reviewable
 - Add a read-only workspace-scoped file-reading MCP tool so orchestrators can safely share workspace file context through Parley without granting arbitrary filesystem access after the current production-readiness cleanup pass closes
 - Keep the Windows and Linux CI matrix green for the current release-validation bar
