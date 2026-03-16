@@ -234,10 +234,15 @@ export function buildParticipantPrompt(
     "- If context is limited, ask one concrete topic question instead of giving a generic fallback.",
     "- Provide at least one useful argument or one concrete question when the topic gives enough context.",
     "- Avoid generic filler such as 'I am ready to participate' or 'Here is a structured response'.",
+    "- Do not identify yourself as Gemini CLI, Claude, or another assistant persona; focus on the topic content.",
     "- Do not ask for the objective, task, or workspace context. The topic above is already the task.",
+    "- Do not ask how you can help or contribute; answer the topic directly.",
+    "- Do not say that you need to inspect files, read docs, or explore the workspace before answering.",
+    "- Treat the topic and earlier participant responses as sufficient context for this turn.",
     "- Do not say you are ready to participate; contribute one concrete point about the topic instead.",
     "- Do not use a generic next step; name a specific document, check, decision, or follow-up action.",
     "- Always provide a short proposed_next_step string that is specific to the topic or current disagreement.",
+    "- If earlier responses are present, directly challenge, refine, or extend one concrete claim from them.",
     "",
     "Session context:",
     `- session_id: ${input.session.sessionId}`,
@@ -436,6 +441,11 @@ function normalizeGeminiResponseValue(value: unknown): unknown {
   }
 
   const unfenced = unwrapMarkdownCodeFence(trimmed);
+  const embeddedFencedJson = extractEmbeddedMarkdownCodeFence(unfenced);
+  if (embeddedFencedJson) {
+    return tryParseJson(embeddedFencedJson) ?? embeddedFencedJson;
+  }
+
   return tryParseJson(unfenced) ?? unfenced;
 }
 
@@ -451,6 +461,12 @@ function unwrapMarkdownCodeFence(value: string): string {
   const match = /^```(?:json)?\s*([\s\S]*?)\s*```$/iu.exec(value);
   const fencedBody = match?.[1];
   return fencedBody ? fencedBody.trim() : value;
+}
+
+function extractEmbeddedMarkdownCodeFence(value: string): string | null {
+  const match = /```(?:json)?\s*([\s\S]*?)\s*```/iu.exec(value);
+  const fencedBody = match?.[1]?.trim();
+  return fencedBody && fencedBody.length > 0 ? fencedBody : null;
 }
 
 function normalizeParticipantStance(value: string | undefined): ParticipantResponse["stance"] {
@@ -552,7 +568,8 @@ function parseGeminiLabeledTextResponse(value: string): ParticipantResponse | nu
       continue;
     }
 
-    const headerMatch = /^([a-zA-Z _-]+):\s*(.*)$/u.exec(line);
+    const normalizedLine = normalizeGeminiFormattingForDetection(line);
+    const headerMatch = /^([a-zA-Z _-]+):\s*(.*)$/u.exec(normalizedLine);
     const headerName = headerMatch?.[1];
     const sectionKey = headerName ? mapGeminiTextSection(headerName) : null;
     if (sectionKey) {
@@ -566,7 +583,7 @@ function parseGeminiLabeledTextResponse(value: string): ParticipantResponse | nu
     }
 
     if (currentSection) {
-      sections[currentSection].push(line);
+      sections[currentSection].push(normalizedLine);
     }
   }
 
@@ -655,7 +672,9 @@ function mapGeminiTextSection(value: string):
     normalized === "arguments" ||
     normalized === "argument" ||
     normalized === "points" ||
-    normalized === "reasons"
+    normalized === "reasons" ||
+    normalized === "why it matters" ||
+    normalized === "why this matters"
   ) {
     return "arguments";
   }
@@ -676,32 +695,60 @@ function mapGeminiTextSection(value: string):
 }
 
 function splitGeminiSentences(value: string): string[] {
-  const matches = value.match(/[^.!?\n]+[.!?]?/gu);
+  const protectedValue = protectGeminiSentenceAbbreviations(value);
+  const matches = protectedValue.match(/[^.!?\n]+[.!?]?/gu);
   return (matches ?? [])
-    .map((sentence) => sentence.trim())
+    .map((sentence) => restoreGeminiSentenceAbbreviations(sentence).trim())
     .filter((sentence) => sentence.length > 0);
 }
 
 function isExplicitNextStepSentence(value: string): boolean {
-  return /^(?:next step|recommended next step|action item|follow[- ]?up):/iu.test(value);
+  return /^(?:next step|proposed next step|recommended next step|action item|follow[- ]?up)\b\s*:?\s*/iu.test(
+    normalizeGeminiFormattingForDetection(value)
+  );
 }
 
 function isLikelyActionSentence(value: string): boolean {
+  const normalized = normalizeGeminiFormattingForDetection(value);
   return (
-    /^(?:a )?next step is to\b/iu.test(value) ||
-    /^(?:recommend|recommended|recommendation):/iu.test(value) ||
+    /^(?:a )?next step is to\b/iu.test(normalized) ||
+    /^(?:recommend|recommended|recommendation):/iu.test(normalized) ||
     /^(?:run|update|document|record|add|keep|rerun|review|verify|investigate|tighten|capture|write|generate|refresh|use|treat|prefer)\b/iu.test(
-      value
+      normalized
     )
   );
 }
 
 function stripNextStepLeadIn(value: string): string {
-  return value
-    .replace(/^(?:next step|recommended next step|action item|follow[- ]?up):\s*/iu, "")
+  return normalizeGeminiFormattingForDetection(value)
+    .replace(
+      /^(?:next step|proposed next step|recommended next step|action item|follow[- ]?up)\b\s*:?\s*/iu,
+      ""
+    )
     .replace(/^(?:a )?next step is to\s+/iu, "")
     .replace(/^(?:recommend|recommended|recommendation):\s*/iu, "")
     .trim();
+}
+
+function normalizeGeminiFormattingForDetection(value: string): string {
+  return value
+    .replace(/^\s{0,3}#{1,6}\s*/u, "")
+    .replace(/\*\*([^*]+)\*\*/gu, "$1")
+    .replace(/\*([^*\n]+)\*/gu, "$1")
+    .replace(/^(?:[-*]|\u2022)\s*/u, "")
+    .trim();
+}
+
+function protectGeminiSentenceAbbreviations(value: string): string {
+  return value
+    .replace(/\be\.g\./giu, "e__PARLEY_DOT__g__PARLEY_DOT__")
+    .replace(/\bi\.e\./giu, "i__PARLEY_DOT__e__PARLEY_DOT__")
+    .replace(/\betc\./giu, "etc__PARLEY_DOT__")
+    .replace(/\bu\.s\./giu, "u__PARLEY_DOT__s__PARLEY_DOT__");
+}
+
+function restoreGeminiSentenceAbbreviations(value: string): string {
+  return value.replace(/__PARLEY_DOT__/gu, ".");
 }
 
 function getFirstText(
